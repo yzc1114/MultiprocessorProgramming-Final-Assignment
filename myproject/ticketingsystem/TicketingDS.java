@@ -51,7 +51,12 @@ public class TicketingDS implements TicketingSystem {
             assert false;
         }
         // TODO 这里指定默认实现方式。
-        actualImpl = new ImplOne();
+        try {
+            switchImplType(ImplType.One);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException e) {
+            e.printStackTrace();
+            System.exit(-1);
+        }
     }
 
     public void switchImplType(ImplType type) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
@@ -139,14 +144,25 @@ public class TicketingDS implements TicketingSystem {
 
         protected final ThreadLocalRandom random = ThreadLocalRandom.current();
 
+        // status == 0 刚刚写完
+        // status == -1 正在写
+        // status == 1 已经读取并且还没开始写
+        protected final static int S_JUST_WROTE = 0;
+        protected final static int S_WRITING = -1;
+        protected final static int S_READING = 1;
+        protected final int[] status;
+        protected final VarHandle statusVH;
+
         public ImplWithStationOnTop() {
             data = new BitSet[ROUTE_NUM][STATION_NUM];
+            status = new int[ROUTE_NUM];
             for (int i = 0; i < ROUTE_NUM; i++) {
                 for (int j = 0; j < STATION_NUM; j++) {
                     data[i][j] = new BitSet(SEAT_NUM * COACH_NUM);
                 }
-
+                status[i] = 0;
             }
+            statusVH = MethodHandles.arrayElementVarHandle(int[].class);
         }
 
         protected class CoachSeatPair {
@@ -167,8 +183,7 @@ public class TicketingDS implements TicketingSystem {
             }
         }
 
-        @Override
-        public int inquiry(int route, int departure, int arrival) {
+        protected int innerDoInquiry(int route, int departure, int arrival) {
             if (isParamsInvalid(route, departure, arrival)) {
                 return -1;
             }
@@ -228,6 +243,22 @@ public class TicketingDS implements TicketingSystem {
         }
 
         @Override
+        public int inquiry(int route, int departure, int arrival) {
+            int s = (int) statusVH.getOpaque(this.status, route - 1);
+            switch (s) {
+                case S_WRITING:
+                case S_READING:
+                    return innerDoInquiry(route, departure, arrival);
+                case S_JUST_WROTE:
+                    synchronized (data[route - 1]) {
+                        status[route - 1] = S_READING;
+                    }
+                    return innerDoInquiry(route, departure, arrival);
+            }
+            return -1;
+        }
+
+        @Override
         public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
             if (isParamsInvalid(route, departure, arrival)) {
                 return null;
@@ -235,7 +266,9 @@ public class TicketingDS implements TicketingSystem {
             BitSet[] station2seats;
             int seatIdx;
             synchronized (station2seats = data[route - 1]) {
+                status[route - 1] = S_WRITING;
                 seatIdx = doBuyTicket(station2seats, departure, arrival);
+                status[route - 1] = 0;
             }
             if (seatIdx == -1) {
                 return null;
@@ -251,7 +284,10 @@ public class TicketingDS implements TicketingSystem {
             }
             BitSet[] station2seats;
             synchronized (station2seats = data[ticket.route - 1]) {
-                return doRefundTicket(station2seats, ticket);
+                status[ticket.route - 1] = -1;
+                boolean res = doRefundTicket(station2seats, ticket);
+                status[ticket.route - 1] = 0;
+                return res;
             }
         }
     }
@@ -273,6 +309,23 @@ public class TicketingDS implements TicketingSystem {
         }
 
         @Override
+        public int inquiry(int route, int departure, int arrival) {
+            int s = (int) statusVH.getVolatile(this.status, route - 1);
+            switch (s) {
+                case -1:
+                case 1:
+                    return innerDoInquiry(route, departure, arrival);
+                case 0:
+                    ReentrantLock lock = locks[route - 1];
+                    lock.lock();
+                    status[route - 1] = 1;
+                    lock.unlock();
+                    return innerDoInquiry(route, departure, arrival);
+            }
+            return -1;
+        }
+
+        @Override
         public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
             if (isParamsInvalid(route, departure, arrival)) {
                 return null;
@@ -281,9 +334,11 @@ public class TicketingDS implements TicketingSystem {
             ReentrantLock lock = locks[route - 1];
             try {
                 lock.lock();
+                status[route - 1] = S_WRITING;
                 BitSet[] station2seats = data[route - 1];
                 seatIdx = doBuyTicket(station2seats, departure, arrival);
             } finally {
+                status[route - 1] = S_JUST_WROTE;
                 lock.unlock();
             }
             if (seatIdx == -1) {
@@ -302,8 +357,10 @@ public class TicketingDS implements TicketingSystem {
             ReentrantLock lock = locks[ticket.route - 1];
             try {
                 lock.lock();
+                status[ticket.route - 1] = -1;
                 return doRefundTicket(station2seats, ticket);
             } finally {
+                status[ticket.route - 1] = 0;
                 lock.unlock();
             }
         }

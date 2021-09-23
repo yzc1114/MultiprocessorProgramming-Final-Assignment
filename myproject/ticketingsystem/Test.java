@@ -21,7 +21,7 @@ public class Test {
 
     private static int THREAD_NUM = 16;
 
-    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 100;
+    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 1;
 
     private static final boolean PRINT_BUY_INFO = false;
 
