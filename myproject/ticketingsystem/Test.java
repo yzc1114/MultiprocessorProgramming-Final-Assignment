@@ -21,7 +21,7 @@ public class Test {
 
     private static int THREAD_NUM = 16;
 
-    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 1;
+    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 100;
 
     private static final boolean PRINT_BUY_INFO = false;
 
@@ -37,6 +37,7 @@ public class Test {
         int[] THREAD_NUMS = new int[]{4, 8, 16, 32, 64};
         for (int thread_num : THREAD_NUMS) {
             System.out.println("-------------- START TEST THREAD NUM = " + thread_num + " --------------");
+            System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {

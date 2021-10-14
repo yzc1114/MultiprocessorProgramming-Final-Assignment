@@ -251,7 +251,8 @@ public class TicketingDS implements TicketingSystem {
                     return innerDoInquiry(route, departure, arrival);
                 case S_JUST_WROTE:
                     synchronized (data[route - 1]) {
-                        status[route - 1] = S_READING;
+                        // status[route - 1] = S_READING;
+                        statusVH.setVolatile(this.status, route - 1, S_READING);
                     }
                     return innerDoInquiry(route, departure, arrival);
             }
@@ -266,9 +267,11 @@ public class TicketingDS implements TicketingSystem {
             BitSet[] station2seats;
             int seatIdx;
             synchronized (station2seats = data[route - 1]) {
-                status[route - 1] = S_WRITING;
+                statusVH.setVolatile(this.status, route - 1, S_WRITING);
+                // status[route - 1] = S_WRITING;
                 seatIdx = doBuyTicket(station2seats, departure, arrival);
-                status[route - 1] = 0;
+                // status[route - 1] = 0;
+                statusVH.setVolatile(this.status, route - 1, S_JUST_WROTE);
             }
             if (seatIdx == -1) {
                 return null;
@@ -284,9 +287,11 @@ public class TicketingDS implements TicketingSystem {
             }
             BitSet[] station2seats;
             synchronized (station2seats = data[ticket.route - 1]) {
-                status[ticket.route - 1] = -1;
+                // status[ticket.route - 1] = -1;
+                statusVH.setVolatile(this.status, ticket.route - 1, S_WRITING);
                 boolean res = doRefundTicket(station2seats, ticket);
-                status[ticket.route - 1] = 0;
+                // status[ticket.route - 1] = 0;
+                statusVH.setVolatile(this.status, ticket.route - 1, S_JUST_WROTE);
                 return res;
             }
         }
@@ -310,7 +315,7 @@ public class TicketingDS implements TicketingSystem {
 
         @Override
         public int inquiry(int route, int departure, int arrival) {
-            int s = (int) statusVH.getVolatile(this.status, route - 1);
+            int s = (int) statusVH.getOpaque(this.status, route - 1);
             switch (s) {
                 case -1:
                 case 1:
@@ -318,7 +323,8 @@ public class TicketingDS implements TicketingSystem {
                 case 0:
                     ReentrantLock lock = locks[route - 1];
                     lock.lock();
-                    status[route - 1] = 1;
+                    statusVH.setVolatile(this.status, route - 1, S_READING);
+                    // status[route - 1] = 1;
                     lock.unlock();
                     return innerDoInquiry(route, departure, arrival);
             }
@@ -334,11 +340,13 @@ public class TicketingDS implements TicketingSystem {
             ReentrantLock lock = locks[route - 1];
             try {
                 lock.lock();
-                status[route - 1] = S_WRITING;
+                statusVH.setVolatile(this.status, route - 1, S_WRITING);
+                // status[route - 1] = S_WRITING;
                 BitSet[] station2seats = data[route - 1];
                 seatIdx = doBuyTicket(station2seats, departure, arrival);
             } finally {
-                status[route - 1] = S_JUST_WROTE;
+                statusVH.setVolatile(this.status, route - 1, S_JUST_WROTE);
+                // status[route - 1] = S_JUST_WROTE;
                 lock.unlock();
             }
             if (seatIdx == -1) {
@@ -357,10 +365,12 @@ public class TicketingDS implements TicketingSystem {
             ReentrantLock lock = locks[ticket.route - 1];
             try {
                 lock.lock();
-                status[ticket.route - 1] = -1;
+                statusVH.setVolatile(this.status, ticket.route - 1, S_WRITING);
+                // status[ticket.route - 1] = -1;
                 return doRefundTicket(station2seats, ticket);
             } finally {
-                status[ticket.route - 1] = 0;
+                statusVH.setVolatile(this.status, ticket.route - 1, S_JUST_WROTE);
+                // status[ticket.route - 1] = 0;
                 lock.unlock();
             }
         }
