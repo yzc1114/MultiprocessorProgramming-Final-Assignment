@@ -2,6 +2,7 @@ package ticketingsystem;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,15 +10,15 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Test {
 
-    private static final int INQUIRY_RATIO = 60;
-    private static final int PURCHASE_RATIO = 30;
+    private static final int INQUIRY_RATIO = 70;
+    private static final int PURCHASE_RATIO = 20;
     private static final int REFUND_RATIO = 10;
 
-    private static final int ROUTE_NUM = 5;
+    private static final int ROUTE_NUM = 10;
     private static final int COACH_NUM = 8;
     private static final int SEAT_NUM = 100;
     private static final int STATION_NUM = 10;
-    private static final int FUNC_CALL_COUNT = 10000;
+    private static final int FUNC_CALL_COUNT = 100000;
 
     private static int THREAD_NUM = 16;
 
@@ -40,6 +41,7 @@ public class Test {
             System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
+//            repeatDoMultiThreadTest(TicketingDS.ImplType.Six, REPEAT_MULTI_THREAD_TEST_COUNT);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
                 repeatDoMultiThreadTest(value, REPEAT_MULTI_THREAD_TEST_COUNT);
             }
@@ -132,40 +134,47 @@ public class Test {
         for (int i = 0; i < THREAD_NUM; i++) {
             thread2Statistics.put(String.valueOf(i + 1), new TicketConsumerStatistics());
         }
-
-        for (int rc = 0; rc < repeatCount; rc++) {
-            System.gc();
-            Thread.sleep(100);
+        long[] fullElapsedTimes = new long[repeatCount];
+        for (int i = 0; i < repeatCount; i++) {
             tds.switchImplType(implType);
-
             Thread[] threads = new Thread[THREAD_NUM];
-            for (int i = 0; i < THREAD_NUM; i++) {
-                Thread t = new Thread(new TicketConsumerRunner(), String.valueOf(i + 1));
-                threads[i] = t;
-                t.start();
+            for (int j = 0; j < THREAD_NUM; j++) {
+                Thread t = new Thread(new TicketConsumerRunner(), String.valueOf(j + 1));
+                threads[j] = t;
             }
-
+            long start = System.nanoTime();
+            for (Thread thread : threads) {
+                thread.start();
+            }
             for (Thread thread : threads) {
                 thread.join();
             }
+            long fullElapsedTime = System.nanoTime() - start;
+            fullElapsedTimes[i] = fullElapsedTime;
         }
 
-        long fullExecNanoTime = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getFullExecTime).sum();
+        long minFullElapsedTime = Arrays.stream(fullElapsedTimes).min().getAsLong();
+
+        long avgExecNanoTime = (long) thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getFullExecTime).average().getAsDouble();
         long fullBuyExecNanoTime = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getBuyExecTime).sum();
         long fullInqExecNanoTime = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getInqExecTime).sum();
         long fullRefExecNanoTime = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getRefExecTime).sum();
 
         int fullFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getFuncCallCount).sum();
+        int avgFuncCallCount = (int) (thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getFuncCallCount).average().getAsDouble());
         int fullBuyFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryBuyCount).sum();
         int fullInqFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryInqCount).sum();
         int fullRefFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryRefCount).sum();
 
-        double throughPut_nano = (1. * fullFuncCallCount) / fullExecNanoTime;
+        double throughPut_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTime;
+        double throughPut_withAvgExecNanoTime = THREAD_NUM * (1. * avgFuncCallCount) / (avgExecNanoTime);
         System.out.println("====================================================================");
         System.out.printf("%s class repeat multi thread test finished.\n", tds.getImplClass().getSimpleName());
         System.out.println("repeat test count: " + repeatCount);
-        System.out.printf("fullFuncCallCount = %d, fullExecNanoTime = %d\n", fullFuncCallCount, fullExecNanoTime);
+        System.out.println("minFullElapsedTime = " + minFullElapsedTime);
+        System.out.printf("fullFuncCallCount = %d, avgFuncCallCount = %d, avgExecNanoTime = %d\n", fullFuncCallCount, avgFuncCallCount, avgExecNanoTime);
         System.out.println("throughPut(func/nano) = " + throughPut_nano);
+        System.out.println("throughPut_withAvgExecNanoTime(func/nano) = " + throughPut_withAvgExecNanoTime);
         System.out.println("inquiry average exec time = " + 1. * fullInqExecNanoTime / fullInqFuncCallCount);
         System.out.println("buyTicket average exec time = " + 1. * fullBuyExecNanoTime / fullBuyFuncCallCount);
         System.out.println("refundTicket average exec time = " + 1. * fullRefExecNanoTime / fullRefFuncCallCount);
@@ -192,16 +201,17 @@ public class Test {
             List<Ticket> holdTickets = new ArrayList<>(allTicketCount);
             for (int i = 0; i < FUNC_CALL_COUNT; i++) {
                 int n = random.nextInt(100);
-                if (n < INQUIRY_RATIO) {
-                    tryInqCount++;
-                    int routeNum = random.nextInt(ROUTE_NUM) + 1;
-                    int departure = random.nextInt(STATION_NUM - 1) + 1;
-                    int arrival = departure + random.nextInt(STATION_NUM - departure) + 1;
+                if (n < REFUND_RATIO && holdTickets.size() > 0) {
+                    tryRefCount++;
                     long preTime = System.nanoTime();
-                    tds.inquiry(routeNum, departure, arrival);
+                    boolean refundResult = tds.refundTicket(holdTickets.remove(holdTickets.size() - 1));
                     long postTime = System.nanoTime();
-                    inqExecTime += postTime - preTime;
-                } else if (n < PURCHASE_RATIO + INQUIRY_RATIO) {
+                    refExecTime += postTime - preTime;
+                    if (!refundResult) {
+                        System.out.println("refund failed, plz debug");
+                        System.exit(-1);
+                    }
+                } else if (n < PURCHASE_RATIO + REFUND_RATIO) {
                     tryBuyCount++;
                     int routeNum = random.nextInt(ROUTE_NUM) + 1;
                     int departure = random.nextInt(STATION_NUM - 1) + 1;
@@ -216,16 +226,15 @@ public class Test {
                         // System.out.println("buyTicket failed");
                         buyFailedCount++;
                     }
-                } else if (holdTickets.size() > 0) {
-                    tryRefCount++;
+                } else {
+                    tryInqCount++;
+                    int routeNum = random.nextInt(ROUTE_NUM) + 1;
+                    int departure = random.nextInt(STATION_NUM - 1) + 1;
+                    int arrival = departure + random.nextInt(STATION_NUM - departure) + 1;
                     long preTime = System.nanoTime();
-                    boolean refundResult = tds.refundTicket(holdTickets.remove(random.nextInt(holdTickets.size())));
+                    tds.inquiry(routeNum, departure, arrival);
                     long postTime = System.nanoTime();
-                    refExecTime += postTime - preTime;
-                    if (!refundResult) {
-                        System.out.println("refund failed, plz debug");
-                        System.exit(-1);
-                    }
+                    inqExecTime += postTime - preTime;
                 }
             }
             thread2Statistics.get(Thread.currentThread().getName()).add(tryBuyCount, tryInqCount, tryRefCount, buyExecTime, inqExecTime, refExecTime);
