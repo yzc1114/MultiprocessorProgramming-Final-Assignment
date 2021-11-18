@@ -1,12 +1,15 @@
 package ticketingsystem;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class TicketingDS implements TicketingSystem {
@@ -33,7 +36,12 @@ public class TicketingDS implements TicketingSystem {
         Four(ImplFour.class),
         Five(ImplFive.class),
         Six(ImplSix.class),
-        Seven(ImplSeven.class);
+        Seven(ImplSeven.class),
+        Eight(ImplEight.class),
+        // Nine(ImplNine.class),
+        Ten(ImplTen.class),
+        Eleven(ImplEleven.class),
+        Twelve(ImplTwelve.class);
         private final Class<? extends TicketingSystem> implClass;
 
         ImplType(Class<? extends TicketingSystem> implClass) {
@@ -56,13 +64,16 @@ public class TicketingDS implements TicketingSystem {
         // TODO 这里指定默认实现方式。
         try {
             switchImplType(ImplType.Three);
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException e) {
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException | IOException e) {
             e.printStackTrace();
             System.exit(-1);
         }
     }
 
-    public void switchImplType(ImplType type) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
+    public void switchImplType(ImplType type) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException, IOException {
+        if (this.actualImpl instanceof Closeable) {
+            ((Closeable) this.actualImpl).close();
+        }
         this.actualImpl = type.implClass.getConstructor(TicketingDS.class).newInstance(this);
         this.soldTickIds = new ThreadLocal<>();
         this.currTid = new ThreadLocal<>();
@@ -168,6 +179,8 @@ public class TicketingDS implements TicketingSystem {
         protected final int[] status;
         protected final VarHandle statusVH;
 
+        protected AtomicReference<int[]>[] views = null;
+
         public ImplCommon() {
             status = new int[ROUTE_NUM];
             for (int i = 0; i < ROUTE_NUM; i++) {
@@ -176,12 +189,78 @@ public class TicketingDS implements TicketingSystem {
             statusVH = MethodHandles.arrayElementVarHandle(int[].class);
         }
 
-        public void readStatus(int route) {
+        protected void initViews() {
+            views = new AtomicReference[ROUTE_NUM];
+            for (int i = 0; i < ROUTE_NUM; i++) {
+                int[] view = new int[STATION_NUM];
+                Arrays.fill(view, COACH_NUM * SEAT_NUM);
+                views[i] = new AtomicReference<>(view);
+            }
+        }
+
+        protected void readStatus(int route) {
             statusVH.getVolatile(this.status, route - 1);
         }
 
-        public void writeStatus(int route) {
+        protected void writeStatus(int route) {
             statusVH.setVolatile(this.status, route - 1, S_JUST_WROTE);
+        }
+
+        protected int readEmptyView(int route, int departure, int arrival) {
+            readStatus(route);
+            int[] view = views[route - 1].getPlain();
+            int min = Integer.MAX_VALUE;
+            for (int i = departure - 1; i <= arrival - 1; i++) {
+                min = Math.min(view[i], min);
+            }
+            return min;
+        }
+
+        protected void setView(int route, int departure, int arrival, boolean toBeOccupied) {
+            int offset = toBeOccupied ? -1 : 1;
+            AtomicReference<int[]> view = views[route - 1];
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            int backoff = 2;
+            int backoffMax = 32;
+            int[] origin = null;
+            while (true) {
+                if (origin == null) {
+                    origin = view.getPlain();
+                }
+                int[] cloned = origin.clone();
+                for (int i = departure - 1; i <= arrival - 1; i++) {
+                    cloned[i] += offset;
+                }
+                int[] exchange = view.compareAndExchange(origin, cloned);
+                if (origin == exchange) {
+                    writeStatus(route);
+                    return;
+                }
+                origin = exchange;
+                try {
+                    Thread.sleep(0, random.nextInt(backoff));
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (backoff < backoffMax) {
+                    backoff *= 2;
+                }
+            }
+
+        }
+
+        // for thread mapping id
+        protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
+        protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
+
+        protected int getMappedThreadID() {
+            Integer mapped;
+            if ((mapped = mappedThreadID.get()) != null) {
+                return mapped;
+            }
+            mapped = currMappedThreadID.getAndIncrement();
+            mappedThreadID.set(mapped);
+            return mapped;
         }
 
         protected class Seat {
@@ -440,7 +519,6 @@ public class TicketingDS implements TicketingSystem {
 
         protected int[] stationMasks;
         protected int[][] dep2arrOnesMasks;
-        protected int[][] dep2arrZerosMasks;
 
         public ImplUsingOneArray() {
             super();
@@ -460,10 +538,8 @@ public class TicketingDS implements TicketingSystem {
                 stationMasks[i] = 1 << i;
             }
             dep2arrOnesMasks = new int[maxStation][];
-            dep2arrZerosMasks = new int[maxStation][];
             for (int i = 0; i < dep2arrOnesMasks.length; i++) {
                 dep2arrOnesMasks[i] = new int[maxStation];
-                dep2arrZerosMasks[i] = new int[maxStation];
             }
             for (int i = 0; i < maxStation; i++) {
                 for (int j = i + 1; j < maxStation; j++) {
@@ -471,7 +547,6 @@ public class TicketingDS implements TicketingSystem {
                     int ones = ((~0) >>> (maxStation - l - 1));
                     ones <<= i;
                     dep2arrOnesMasks[i][j] = ones;
-                    dep2arrZerosMasks[i][j] = ~ones;
                 }
             }
         }
@@ -490,7 +565,7 @@ public class TicketingDS implements TicketingSystem {
                 if (occupied) {
                     newSeatInfo |= dep2arrOnesMasks[departure - 1][arrival - 1];
                 } else {
-                    newSeatInfo &= dep2arrZerosMasks[departure - 1][arrival - 1];
+                    newSeatInfo &= ~dep2arrOnesMasks[departure - 1][arrival - 1];
                 }
                 boolean fail = !vh.compareAndSet(intArray, seatIdx, expectedSeatInfo, newSeatInfo);
                 if (!fail) {
@@ -503,12 +578,38 @@ public class TicketingDS implements TicketingSystem {
             }
         }
 
+        protected int tryBuyWithInRange(int route, int departure, int arrival, int left, int right, ThreadLocalRandom random) {
+            int startIdx = random.nextInt(left, right + 1);
+            int currIdx = startIdx;
+            boolean buyResult = false;
+            while (currIdx >= left) {
+                buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
+                if (buyResult) {
+                    break;
+                }
+                currIdx--;
+            }
+            if (!buyResult) {
+                currIdx = startIdx + 1;
+                while (currIdx <= right) {
+                    buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
+                    if (buyResult) {
+                        break;
+                    }
+                    currIdx++;
+                }
+            }
+            if (buyResult) {
+                return currIdx;
+            }
+            return -1;
+        }
+
         protected boolean checkSeatInfo(int seatInfo, int departure, int arrival, boolean occupied) {
+            int mask = dep2arrOnesMasks[departure - 1][arrival - 1];
             if (occupied) {
-                int mask = dep2arrOnesMasks[departure - 1][arrival - 1];
                 return mask == (seatInfo & mask);
             } else {
-                int mask = dep2arrOnesMasks[departure - 1][arrival - 1];
                 return 0 == (seatInfo & mask);
             }
         }
@@ -564,31 +665,12 @@ public class TicketingDS implements TicketingSystem {
             int left = (route - 1) * COACH_NUM * SEAT_NUM;
             int right = route * COACH_NUM * SEAT_NUM - 1;
             ThreadLocalRandom random = ThreadLocalRandom.current();
-            int startIdx = random.nextInt(left, right + 1);
-            int currIdx = startIdx;
-            boolean buyResult = false;
-            while (currIdx >= left) {
-                buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
-                if (buyResult) {
-                    break;
-                }
-                currIdx--;
-            }
-            if (!buyResult) {
-                currIdx = startIdx + 1;
-                while (currIdx <= right) {
-                    buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
-                    if (buyResult) {
-                        break;
-                    }
-                    currIdx++;
-                }
-            }
-            if (!buyResult) {
+            int boughtIdx = tryBuyWithInRange(route, departure, arrival, left, right, random);
+            if (boughtIdx == -1) {
                 // 无余票
                 return null;
             }
-            Seat s = new Seat(currIdx);
+            Seat s = new Seat(boughtIdx);
             return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
         }
     }
@@ -605,17 +687,11 @@ public class TicketingDS implements TicketingSystem {
             justRefundSeatIdxes = new ThreadLocal<>();
         }
 
-        @Override
-        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
-            if (isParamsInvalid(route, departure, arrival)) {
-                return null;
-            }
-            readStatus(route);
-            boolean buyResult = false;
-            int currIdx = -1;
-
+        protected int tryBuyFromRefund(int route, int departure, int arrival) {
             Map<Integer, List<Integer>> mapSeatIdxes = justRefundSeatIdxes.get();
             List<Integer> seatIdxes = mapSeatIdxes == null ? null : mapSeatIdxes.get(route);
+            int currIdx = -1;
+            boolean buyResult = false;
             while (seatIdxes != null && seatIdxes.size() > 0) {
                 currIdx = seatIdxes.remove(seatIdxes.size() - 1);
                 buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
@@ -623,37 +699,31 @@ public class TicketingDS implements TicketingSystem {
                     break;
                 }
             }
+            if (buyResult) {
+                return currIdx;
+            }
+            return -1;
+        }
 
-            int left = (route - 1) * COACH_NUM * SEAT_NUM;
-            int right = route * COACH_NUM * SEAT_NUM - 1;
-            ThreadLocalRandom random = ThreadLocalRandom.current();
-            int startIdx = random.nextInt(left, right + 1);
-            if (!buyResult) {
-                currIdx = startIdx;
-                while (currIdx >= left) {
-                    buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
-                    if (buyResult) {
-                        break;
-                    }
-                    currIdx--;
-                }
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
             }
-            if (!buyResult) {
-                currIdx = startIdx + 1;
-                while (currIdx <= right) {
-                    buyResult = setOccupiedInverted(route, currIdx, departure, arrival, true, true);
-                    if (buyResult) {
-                        break;
-                    }
-                    currIdx++;
-                }
+            readStatus(route);
+            int boughtIdx = tryBuyFromRefund(route, departure, arrival);
+
+            if (boughtIdx == -1) {
+                int left = (route - 1) * COACH_NUM * SEAT_NUM;
+                int right = route * COACH_NUM * SEAT_NUM - 1;
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                boughtIdx = tryBuyWithInRange(route, departure, arrival, left, right, random);
             }
-            if (!buyResult) {
+            if (boughtIdx == -1) {
                 // 无余票
                 return null;
             }
-            assert currIdx != -1;
-            Seat s = new Seat(currIdx);
+            Seat s = new Seat(boughtIdx);
             return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
         }
 
@@ -828,6 +898,7 @@ public class TicketingDS implements TicketingSystem {
         protected long[][] longArray;
 
         protected long[][][] dep2arr2posMasks;
+        protected long[][] dep2arr2inqMasks;
 
         protected int[][] crowd;
 
@@ -900,6 +971,7 @@ public class TicketingDS implements TicketingSystem {
 
         protected void initMasks() {
             dep2arr2posMasks = new long[STATION_NUM][STATION_NUM][seatsPerLong];
+            dep2arr2inqMasks = new long[STATION_NUM][STATION_NUM];
             for (int i = 0; i < dep2arr2posMasks.length; i++) {
                 dep2arr2posMasks[i] = new long[STATION_NUM][seatsPerLong];
                 for (int j = i + 1; j < dep2arr2posMasks[i].length; j++) {
@@ -932,16 +1004,18 @@ public class TicketingDS implements TicketingSystem {
             initMasks();
         }
 
-        protected final int partCount = 8;
+        protected final int partCount = COACH_NUM;
 
         protected final int seatsPerPart = COACH_NUM * SEAT_NUM / partCount;
+
+        protected final int arrayLength = COACH_NUM * SEAT_NUM / seatsPerLong + 1;
 
         protected void initDataArray() {
             crowd = new int[ROUTE_NUM][partCount];
             for (int[] ints : crowd) {
                 Arrays.fill(ints, seatsPerPart * STATION_NUM);
             }
-            longArray = new long[ROUTE_NUM][COACH_NUM * SEAT_NUM / seatsPerLong + 1];
+            longArray = new long[ROUTE_NUM][arrayLength];
             vh = MethodHandles.arrayElementVarHandle(long[].class);
         }
 
@@ -1125,9 +1199,214 @@ public class TicketingDS implements TicketingSystem {
             super();
         }
 
+        protected int tryBuyWithInRange(int route, int departure, int arrival, int left, int right, ThreadLocalRandom random) {
+            int startIdx = random.nextInt(left, right + 1);
+
+            int currIdx = startIdx;
+            int boughtSeatIdxOnRoute = -1;
+            while (currIdx >= left) {
+                boughtSeatIdxOnRoute = trySetOccupied(route, currIdx, departure, arrival, true);
+                if (boughtSeatIdxOnRoute != -1) {
+                    break;
+                }
+                currIdx--;
+            }
+            if (boughtSeatIdxOnRoute == -1) {
+                currIdx = startIdx + 1;
+                while (currIdx <= right) {
+                    boughtSeatIdxOnRoute = trySetOccupied(route, currIdx, departure, arrival, true);
+                    if (boughtSeatIdxOnRoute != -1) {
+                        break;
+                    }
+                    currIdx++;
+                }
+            }
+            return boughtSeatIdxOnRoute;
+        }
+
         @Override
         public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
             readStatus(route);
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
+            }
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            int boughtSeatIdxOnRoute = tryBuyWithInRange(route, departure, arrival, 0, arrayLength - 1, random);
+            if (boughtSeatIdxOnRoute == -1) {
+                // 无余票
+                return null;
+            }
+            Seat s = new Seat(route, boughtSeatIdxOnRoute);
+            return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
+        }
+
+        @Override
+        public boolean refundTicket(Ticket ticket) {
+            if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
+                return false;
+            }
+            Seat seat = new Seat(ticket.route, ticket.coach, ticket.seat);
+            return freeOccupiedForSpecificSeat(ticket.route, seat.getSeatContainerElemIdx(), seat.getSeatPosInContainerElem(), ticket.departure, ticket.arrival, true);
+        }
+
+    }
+
+    private class ImplEight extends ImplSeven {
+        ThreadLocal<Map<Integer, List<Integer>>> justRefundSeatContainerElemIdxes;
+
+        public ImplEight() {
+            super();
+            justRefundSeatContainerElemIdxes = new ThreadLocal<>();
+        }
+
+        protected int tryBuyFromRefund(int route, int departure, int arrival) {
+            Map<Integer, List<Integer>> mapSeatIdxes = justRefundSeatContainerElemIdxes.get();
+            List<Integer> seatIdxes = mapSeatIdxes == null ? null : mapSeatIdxes.get(route);
+            int currIdx;
+            int boughtSeatIdxOnRoute = -1;
+            while (seatIdxes != null && seatIdxes.size() > 0) {
+                currIdx = seatIdxes.remove(seatIdxes.size() - 1);
+                boughtSeatIdxOnRoute = trySetOccupied(route, currIdx, departure, arrival, true);
+                if (boughtSeatIdxOnRoute != -1) {
+                    break;
+                }
+            }
+            return boughtSeatIdxOnRoute;
+        }
+
+
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+            readStatus(route);
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
+            }
+
+            int boughtSeatIdxOnRoute = tryBuyFromRefund(route, departure, arrival);
+
+            if (boughtSeatIdxOnRoute == -1) {
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                boughtSeatIdxOnRoute = tryBuyWithInRange(route, departure, arrival, 0, arrayLength - 1, random);
+            }
+            if (boughtSeatIdxOnRoute == -1) {
+                // 无余票
+                return null;
+            }
+            Seat s = new Seat(route, boughtSeatIdxOnRoute);
+            return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
+        }
+
+        @Override
+        public boolean refundTicket(Ticket ticket) {
+            if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
+                return false;
+            }
+            Seat seat = new Seat(ticket.route, ticket.coach, ticket.seat);
+            boolean suc = freeOccupiedForSpecificSeat(ticket.route, seat.getSeatContainerElemIdx(), seat.getSeatPosInContainerElem(), ticket.departure, ticket.arrival, true);
+            if (suc) {
+                if (justRefundSeatContainerElemIdxes.get() == null) {
+                    justRefundSeatContainerElemIdxes.set(new HashMap<>());
+                    for (int i = 0; i < ROUTE_NUM; i++) {
+                        justRefundSeatContainerElemIdxes.get().put(i + 1, new ArrayList<>(longArray[i].length));
+                    }
+                }
+                if (ticket.arrival - ticket.departure >= STATION_NUM / 2)
+                    justRefundSeatContainerElemIdxes.get().get(ticket.route).add(seat.seatContainerElemIdx);
+            }
+            return suc;
+        }
+
+
+    }
+
+    /**
+     * 继承于ImplSix，它使用了view的方式，优化inquiry速度
+     */
+    private class ImplNine extends ImplSix implements Closeable {
+
+        public ImplNine() {
+            super();
+            initViews();
+            initThreadPool();
+        }
+
+        protected AtomicBoolean shutdownThreadPool = new AtomicBoolean(false);
+
+        protected class SetViewTask {
+            int route;
+            int departure;
+            int arrival;
+            boolean occupied;
+
+            public SetViewTask(int route, int departure, int arrival, boolean occupied) {
+                this.route = route;
+                this.departure = departure;
+                this.arrival = arrival;
+                this.occupied = occupied;
+            }
+        }
+
+        protected BlockingQueue<SetViewTask>[] offsets = new LinkedBlockingQueue[THREAD_NUM];
+
+        protected void initThreadPool() {
+            for (int i = 0; i < offsets.length; i++) {
+                offsets[i] = new LinkedBlockingQueue<>();
+            }
+            for (int i = 0; i < THREAD_NUM; i++) {
+                int ic = i;
+                new Thread(() -> {
+                    SetViewTask t;
+                    while ((t = offsets[ic].poll()) != null || !shutdownThreadPool.get()) {
+                        try {
+                            if (t == null) {
+                                t = offsets[ic].poll(10, TimeUnit.MILLISECONDS);
+                            }
+                            if (t == null) {
+                                Thread.sleep(5);
+                                continue;
+                            }
+                            setView(t.route, t.departure, t.arrival, t.occupied);
+                        } catch (InterruptedException e) {
+                            //
+                        }
+                    }
+                }).start();
+            }
+        }
+
+        protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
+        protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
+
+        protected int getMappedThreadID() {
+            Integer mapped;
+            if ((mapped = mappedThreadID.get()) != null) {
+                return mapped;
+            }
+            mapped = currMappedThreadID.getAndIncrement();
+            mappedThreadID.set(mapped);
+            return mapped;
+        }
+
+        protected void submitToThreadPool(SetViewTask t) {
+            int mapped = getMappedThreadID();
+            offsets[mapped].offer(t);
+        }
+
+        @Override
+        public void close() throws IOException {
+            shutdownThreadPool.set(true);
+        }
+
+        @Override
+        public int inquiry(int route, int departure, int arrival) {
+            if (isParamsInvalid(route, departure, arrival)) {
+                return -1;
+            }
+            return readEmptyView(route, departure, arrival);
+        }
+
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
             if (isParamsInvalid(route, departure, arrival)) {
                 return null;
             }
@@ -1158,6 +1437,7 @@ public class TicketingDS implements TicketingSystem {
                 // 无余票
                 return null;
             }
+            submitToThreadPool(new SetViewTask(route, departure, arrival, true));
             Seat s = new Seat(route, boughtSeatIdxOnRoute);
             return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
         }
@@ -1168,9 +1448,293 @@ public class TicketingDS implements TicketingSystem {
                 return false;
             }
             Seat seat = new Seat(ticket.route, ticket.coach, ticket.seat);
-            return freeOccupiedForSpecificSeat(ticket.route, seat.getSeatContainerElemIdx(), seat.getSeatPosInContainerElem(), ticket.departure, ticket.arrival, true);
+            boolean suc = freeOccupiedForSpecificSeat(ticket.route, seat.getSeatContainerElemIdx(), seat.getSeatPosInContainerElem(), ticket.departure, ticket.arrival, true);
+            if (suc) {
+                submitToThreadPool(new SetViewTask(ticket.route, ticket.departure, ticket.arrival, false));
+            }
+            return suc;
         }
 
     }
+
+    /**
+     * 使用后台线程，维护当前从departure到arrival的较精确空闲座位。
+     */
+    private class ImplTen extends ImplUsingOneArray implements Closeable {
+        public ImplTen() {
+            super();
+            initAvailableSeats();
+            initThreadPool();
+        }
+
+        @Override
+        public void close() throws IOException {
+            shutdownThreadPool.set(true);
+        }
+
+        protected AtomicBoolean shutdownThreadPool = new AtomicBoolean(false);
+
+        // route -> departure -> arrival -> ConcurrentHashMap
+        protected Map<Integer, Boolean>[][][] availableSeats = new Map[ROUTE_NUM][STATION_NUM][STATION_NUM];
+
+        protected void initAvailableSeats() {
+            for (int i = 0; i < availableSeats.length; i++) {
+                availableSeats[i] = new Map[STATION_NUM][STATION_NUM];
+                for (int j = 0; j < STATION_NUM - 1; j++) {
+                    availableSeats[i][j] = new Map[STATION_NUM];
+                    for (int k = j + 1; k < STATION_NUM; k++) {
+                        availableSeats[i][j][k] = new ConcurrentHashMap<>();
+                    }
+                }
+            }
+            for (int seatIdx = 0; seatIdx < intArray.length; seatIdx++) {
+                Seat s = new Seat(seatIdx);
+
+                for (int dep = 0; dep < STATION_NUM - 1; dep++) {
+                    for (int arr = dep + 1; arr < STATION_NUM; arr++) {
+                        availableSeats[s.getRoute() - 1][dep][arr].put(s.getSeatIdx(), true);
+                    }
+                }
+            }
+        }
+
+        protected class DepArr {
+            int dep;
+            int arr;
+
+            public DepArr(int dep, int arr) {
+                this.dep = dep;
+                this.arr = arr;
+            }
+
+            public boolean hold(int otherDep, int otherArr) {
+                return dep <= otherDep && arr >= otherArr;
+            }
+        }
+
+        protected DepArr[] extractEmptyParts(int seatInfo) {
+            int startEmpty = -1;
+            int endEmpty = -1;
+            DepArr[] emptyParts = new DepArr[STATION_NUM / 2];
+            int emptyPartsIdx = 0;
+            for (int i = 0; i < STATION_NUM; i++) {
+                int o = (seatInfo & (1 << i));
+                if (o == 0) {
+                    if (startEmpty == -1) {
+                        startEmpty = i;
+                    }
+                } else {
+                    if (startEmpty != -1) {
+                        endEmpty = i - 1;
+                        if (endEmpty == startEmpty) {
+                            startEmpty = -1;
+                            continue;
+                        }
+                        emptyParts[emptyPartsIdx++] = new DepArr(startEmpty, endEmpty);
+                        startEmpty = -1;
+                    }
+                }
+            }
+            if (startEmpty != -1) {
+                emptyParts[emptyPartsIdx] = new DepArr(startEmpty, STATION_NUM - 1);
+            }
+            return emptyParts;
+        }
+
+        protected void rePutAvailableSeat(int seatIdx) {
+            Seat s = new Seat(seatIdx);
+            int seatInfo = (Integer) vh.getOpaque(intArray, seatIdx);
+            DepArr[] emptyParts = extractEmptyParts(seatInfo);
+            for (int dep = 0; dep < STATION_NUM - 1; dep++) {
+                nextArr:
+                for (int arr = dep + 1; arr < STATION_NUM; arr++) {
+                    for (DepArr emptyPart : emptyParts) {
+                        if (emptyPart == null) {
+                            break;
+                        }
+                        if (emptyPart.hold(dep, arr)) {
+                            availableSeats[s.getRoute() - 1][dep][arr].put(seatIdx, true);
+                            continue nextArr;
+                        }
+                    }
+                    // cannot hold
+                    availableSeats[s.getRoute() - 1][dep][arr].remove(seatIdx);
+                }
+            }
+        }
+
+        protected BlockingQueue<Integer>[] rePuts = new BlockingQueue[THREAD_NUM];
+
+        protected void initThreadPool() {
+            for (int i = 0; i < rePuts.length; i++) {
+                rePuts[i] = new LinkedBlockingQueue<>();
+            }
+            for (int i = 0; i < THREAD_NUM; i++) {
+                int ic = i;
+                new Thread(() -> {
+                    while (!shutdownThreadPool.get()) {
+                        try {
+                            Integer seatIdx = rePuts[ic].poll(10, TimeUnit.MILLISECONDS);
+                            if (seatIdx == null) {
+                                continue;
+                            }
+                            rePutAvailableSeat(seatIdx);
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                    }
+                }).start();
+            }
+        }
+
+        protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
+        protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
+
+        protected int getMappedThreadID() {
+            Integer mapped;
+            if ((mapped = mappedThreadID.get()) != null) {
+                return mapped;
+            }
+            mapped = currMappedThreadID.getAndIncrement();
+            mappedThreadID.set(mapped);
+            return mapped;
+        }
+
+        protected void submitToThreadPool(int seatIdx) {
+            int mapped = getMappedThreadID();
+            rePuts[mapped].offer(seatIdx);
+        }
+
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
+            }
+
+            // first try to use dep arr available seats
+            boolean buyResult = false;
+            int boughtIdx = -1;
+            for (int seatIdx : availableSeats[route - 1][departure - 1][arrival - 1].keySet()) {
+                buyResult = setOccupiedInverted(route, seatIdx, departure, arrival, true, true);
+                if (buyResult) {
+                    boughtIdx = seatIdx;
+                    break;
+                }
+            }
+
+            if (!buyResult) {
+                int left = (route - 1) * COACH_NUM * SEAT_NUM;
+                int right = route * COACH_NUM * SEAT_NUM - 1;
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                boughtIdx = tryBuyWithInRange(route, departure, arrival, left, right, random);
+            }
+            if (boughtIdx == -1) {
+                // 无余票
+                return null;
+            }
+            submitToThreadPool(boughtIdx);
+            Seat s = new Seat(boughtIdx);
+            return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
+        }
+
+        @Override
+        public boolean refundTicket(Ticket ticket) {
+            if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
+                return false;
+            }
+            Seat s = new Seat(ticket.route, ticket.coach, ticket.seat);
+            boolean suc = setOccupiedInverted(ticket.route, s.getSeatIdx(), ticket.departure, ticket.arrival, false, true);
+            if (suc) {
+                submitToThreadPool(s.seatIdx);
+            }
+            return suc;
+        }
+    }
+
+    private class ImplEleven extends ImplFour {
+
+        protected int partsCount = COACH_NUM;
+
+        protected int partLength = COACH_NUM * SEAT_NUM / partsCount;
+
+        public ImplEleven() {
+            super();
+        }
+
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
+            }
+
+            int boughtIdx = tryBuyFromRefund(route, departure, arrival);
+            if (boughtIdx == -1) {
+                int currPart = getMappedThreadID() % partsCount;
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                readStatus(route);
+                for (int i = 0; i < partsCount; i++) {
+                    int left = (route - 1) * COACH_NUM * SEAT_NUM + currPart * partLength;
+                    // int right = route * COACH_NUM * SEAT_NUM - 1;
+                    int right = Math.min(route * COACH_NUM * SEAT_NUM - 1, (route - 1) * COACH_NUM * SEAT_NUM + (currPart + 1) * partLength);
+                    boughtIdx = tryBuyWithInRange(route, departure, arrival, left, right, random);
+                    if (boughtIdx != -1) {
+                        break;
+                    }
+                    currPart = (currPart + 1) % partsCount;
+                }
+            }
+
+            if (boughtIdx == -1) {
+                return null;
+            }
+            Seat s = new Seat(boughtIdx);
+            return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
+        }
+    }
+
+    private class ImplTwelve extends ImplEight {
+        public ImplTwelve() {
+            super();
+        }
+
+        protected int partsCount = COACH_NUM;
+
+        protected int partLength = arrayLength / COACH_NUM;
+
+        @Override
+        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+            readStatus(route);
+            if (isParamsInvalid(route, departure, arrival)) {
+                return null;
+            }
+
+            int boughtSeatIdxOnRoute = tryBuyFromRefund(route, departure, arrival);
+
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+
+            if (boughtSeatIdxOnRoute == -1) {
+                int currPart = getMappedThreadID() % partsCount;
+                long[] seatsForRoute = longArray[route - 1];
+                for (int i = 0; i < partsCount; i++) {
+                    int left = currPart * partLength;
+                    // int right = route * COACH_NUM * SEAT_NUM - 1;
+                    int right = Math.min(seatsForRoute.length - 1, (currPart + 1) * partLength);
+                    boughtSeatIdxOnRoute = tryBuyWithInRange(route, departure, arrival, left, right, random);
+                    if (boughtSeatIdxOnRoute != -1) {
+                        break;
+                    }
+                    currPart = (currPart + 1) % partsCount;
+                }
+
+            }
+            if (boughtSeatIdxOnRoute == -1) {
+                // 无余票
+                return null;
+            }
+            Seat s = new Seat(route, boughtSeatIdxOnRoute);
+            return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
+        }
+    }
+
 
 }

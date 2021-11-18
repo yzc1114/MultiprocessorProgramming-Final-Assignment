@@ -1,5 +1,6 @@
 package ticketingsystem;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,32 +30,34 @@ public class Test {
     private static TicketingDS tds;
     private static Map<String, TicketConsumerStatistics> thread2Statistics;
 
-    public static void main(String[] args) throws InterruptedException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    public static void main(String[] args) throws InterruptedException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
         // implFundamentalTests();
         doVariousThreadNumMultiThreadTest();
     }
 
-    private static void doVariousThreadNumMultiThreadTest() throws InterruptedException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException {
+    private static void doVariousThreadNumMultiThreadTest() throws InterruptedException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException, IOException {
         int[] THREAD_NUMS = new int[]{4, 8, 16, 32, 64};
         for (int thread_num : THREAD_NUMS) {
             System.out.println("-------------- START TEST THREAD NUM = " + thread_num + " --------------");
             System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
-//            repeatDoMultiThreadTest(TicketingDS.ImplType.Six, REPEAT_MULTI_THREAD_TEST_COUNT);
+//            repeatDoMultiThreadTest(TicketingDS.ImplType.Four, REPEAT_MULTI_THREAD_TEST_COUNT);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
                 repeatDoMultiThreadTest(value, REPEAT_MULTI_THREAD_TEST_COUNT);
             }
             System.out.println("--------------- END TEST THREAD NUM = " + thread_num + " ---------------\n\n");
         }
+        tds.switchImplType(TicketingDS.ImplType.One);
     }
 
-    private static void implFundamentalTests() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
-        tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
+    private static void implFundamentalTests() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
+        tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, 1);
         for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
             tds.switchImplType(value);
             doFundamentalTest();
         }
+        tds.switchImplType(TicketingDS.ImplType.One);
     }
 
     private static void doFundamentalTest() {
@@ -82,6 +85,8 @@ public class Test {
         private long refExecTime = 0;
         private int funcCallCount = 0;
         private long fullExecTime = 0;
+        private long threadStartTime = 0;
+        private long threadEndTime = 0;
 
         public int getTryBuyCount() {
             return tryBuyCount;
@@ -115,7 +120,15 @@ public class Test {
             return fullExecTime;
         }
 
-        public void add(int tryBuyCount, int tryInqCount, int tryRefCount, long buyExecTime, long inqExecTime, long refExecTime) {
+        public long getThreadStartTime() {
+            return threadStartTime;
+        }
+
+        public long getThreadEndTime() {
+            return threadEndTime;
+        }
+
+        public void add(int tryBuyCount, int tryInqCount, int tryRefCount, long buyExecTime, long inqExecTime, long refExecTime, long threadStartTime, long threadEndTime) {
             TicketConsumerStatistics s = this;
             s.tryBuyCount += tryBuyCount;
             s.tryInqCount += tryInqCount;
@@ -125,16 +138,24 @@ public class Test {
             s.refExecTime += refExecTime;
             s.funcCallCount += tryBuyCount + tryInqCount + tryRefCount;
             s.fullExecTime += buyExecTime + inqExecTime + refExecTime;
+            s.threadStartTime = threadStartTime;
+            s.threadEndTime = threadEndTime;
+        }
+
+        public void nextEpoch() {
+            this.threadStartTime = 0;
+            this.threadEndTime = 0;
         }
     }
 
     @SuppressWarnings("all")
-    private static void repeatDoMultiThreadTest(TicketingDS.ImplType implType, int repeatCount) throws InterruptedException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private static void repeatDoMultiThreadTest(TicketingDS.ImplType implType, int repeatCount) throws InterruptedException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
         thread2Statistics = new ConcurrentHashMap<>();
         for (int i = 0; i < THREAD_NUM; i++) {
             thread2Statistics.put(String.valueOf(i + 1), new TicketConsumerStatistics());
         }
         long[] fullElapsedTimes = new long[repeatCount];
+        long[] fullElapsedTimesInner = new long[repeatCount];
         for (int i = 0; i < repeatCount; i++) {
             tds.switchImplType(implType);
             Thread[] threads = new Thread[THREAD_NUM];
@@ -151,9 +172,22 @@ public class Test {
             }
             long fullElapsedTime = System.nanoTime() - start;
             fullElapsedTimes[i] = fullElapsedTime;
+            long innerElapseMinStart = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getThreadStartTime).min().getAsLong();
+            long innerElapseMaxEnd = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getThreadEndTime).max().getAsLong();
+            fullElapsedTimesInner[i] = innerElapseMaxEnd - innerElapseMinStart;
         }
 
-        long minFullElapsedTime = Arrays.stream(fullElapsedTimes).min().getAsLong();
+        long maxFullElapsedTimePerEpoch = Arrays.stream(fullElapsedTimes).max().getAsLong();
+        long minFullElapsedTimePerEpoch = Arrays.stream(fullElapsedTimes).min().getAsLong();
+        long avgFullElapsedTimePerEpoch = (long) Arrays.stream(fullElapsedTimes).average().getAsDouble();
+        Arrays.sort(fullElapsedTimes);
+        long midFullElapsedTimePerEpoch = fullElapsedTimes[repeatCount / 2];
+
+        long maxFullElapsedTimeInnerPerEpoch = Arrays.stream(fullElapsedTimesInner).max().getAsLong();
+        long minFullElapsedTimeInnerPerEpoch = Arrays.stream(fullElapsedTimesInner).min().getAsLong();
+        long avgFullElapsedTimeInnerPerEpoch = (long) Arrays.stream(fullElapsedTimesInner).average().getAsDouble();
+        Arrays.sort(fullElapsedTimesInner);
+        long midFullElapsedTimeInnerPerEpoch = fullElapsedTimesInner[repeatCount / 2];
 
         long avgExecNanoTime = (long) thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getFullExecTime).average().getAsDouble();
         long fullBuyExecNanoTime = thread2Statistics.values().stream().mapToLong(TicketConsumerStatistics::getBuyExecTime).sum();
@@ -166,15 +200,20 @@ public class Test {
         int fullInqFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryInqCount).sum();
         int fullRefFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryRefCount).sum();
 
-        double throughPut_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTime;
-        double throughPut_withAvgExecNanoTime = THREAD_NUM * (1. * avgFuncCallCount) / (avgExecNanoTime);
+        double best_throughPut_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTimePerEpoch;
+        double avg_throughPut_nano = (1. * fullFuncCallCount / repeatCount) / avgFullElapsedTimePerEpoch;
+        double best_throughPut_inner_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTimeInnerPerEpoch;
+        double avg_throughPut_inner_nano = (1. * fullFuncCallCount / repeatCount) / avgFullElapsedTimeInnerPerEpoch;
         System.out.println("====================================================================");
         System.out.printf("%s class repeat multi thread test finished.\n", tds.getImplClass().getSimpleName());
         System.out.println("repeat test count: " + repeatCount);
-        System.out.println("minFullElapsedTime = " + minFullElapsedTime);
-        System.out.printf("fullFuncCallCount = %d, avgFuncCallCount = %d, avgExecNanoTime = %d\n", fullFuncCallCount, avgFuncCallCount, avgExecNanoTime);
-        System.out.println("throughPut(func/nano) = " + throughPut_nano);
-        System.out.println("throughPut_withAvgExecNanoTime(func/nano) = " + throughPut_withAvgExecNanoTime);
+        System.out.printf("minFullElapsedTimePerEpoch = %d, maxFullElapsedTimePerEpoch = %d\navgFullElapsedTimePerEpoch = %d, midFullElapsedTimePerEpoch = %d\n", minFullElapsedTimePerEpoch, maxFullElapsedTimePerEpoch, avgFullElapsedTimePerEpoch, midFullElapsedTimePerEpoch);
+        System.out.printf("minFullElapsedTimeInnerPerEpoch = %d, maxFullElapsedTimeInnerPerEpoch = %d\navgFullElapsedTimeInnerPerEpoch = %d, midFullElapsedTimeInnerPerEpoch = %d\n", minFullElapsedTimeInnerPerEpoch, maxFullElapsedTimeInnerPerEpoch, avgFullElapsedTimeInnerPerEpoch, midFullElapsedTimeInnerPerEpoch);
+        System.out.printf("fullFuncCallCount = %d, avgFuncCallCount = %d\n", fullFuncCallCount, avgFuncCallCount);
+        System.out.println("best_throughPut(func/nano) = " + best_throughPut_nano);
+        System.out.println("avg_throughPut(func/nano) = " + avg_throughPut_nano);
+        System.out.println("best_throughPut_inner(func/nano) = " + best_throughPut_nano);
+        System.out.println("avg_throughPut_inner(func/nano) = " + avg_throughPut_inner_nano);
         System.out.println("inquiry average exec time = " + 1. * fullInqExecNanoTime / fullInqFuncCallCount);
         System.out.println("buyTicket average exec time = " + 1. * fullBuyExecNanoTime / fullBuyFuncCallCount);
         System.out.println("refundTicket average exec time = " + 1. * fullRefExecNanoTime / fullRefFuncCallCount);
@@ -199,6 +238,7 @@ public class Test {
             String threadName = Thread.currentThread().getName();
             int allTicketCount = ROUTE_NUM * COACH_NUM * SEAT_NUM;
             List<Ticket> holdTickets = new ArrayList<>(allTicketCount);
+            long start = System.nanoTime();
             for (int i = 0; i < FUNC_CALL_COUNT; i++) {
                 int n = random.nextInt(100);
                 if (n < REFUND_RATIO && holdTickets.size() > 0) {
@@ -237,7 +277,8 @@ public class Test {
                     inqExecTime += postTime - preTime;
                 }
             }
-            thread2Statistics.get(Thread.currentThread().getName()).add(tryBuyCount, tryInqCount, tryRefCount, buyExecTime, inqExecTime, refExecTime);
+            long end = System.nanoTime();
+            thread2Statistics.get(Thread.currentThread().getName()).add(tryBuyCount, tryInqCount, tryRefCount, buyExecTime, inqExecTime, refExecTime, start, end);
             if (PRINT_BUY_INFO) {
                 System.out.println(Thread.currentThread().getName() + " try buy count: " + tryBuyCount);
                 if (buyFailedCount > 0) {
