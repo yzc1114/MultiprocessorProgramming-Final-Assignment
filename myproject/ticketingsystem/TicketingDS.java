@@ -21,7 +21,9 @@ public class TicketingDS implements TicketingSystem {
     private final int THREAD_NUM;
 
     private ThreadLocal<HashSet<Long>> soldTickIds;
+    //    private ConcurrentHashMap<Long, Boolean> soldTickIds = new ConcurrentHashMap<>();
     private ThreadLocal<Integer> currTid;
+    //    private AtomicInteger currTid;
     private AtomicInteger nextTidRegion;
     private ThreadLocal<Integer> currTidRegion;
     private static final int tidRegionSpan = 10_000_000;
@@ -34,7 +36,7 @@ public class TicketingDS implements TicketingSystem {
         Two(ImplTwo.class),
         Three(ImplThree.class),
         Four(ImplFour.class),
-        Five(ImplFive.class),
+        //                Five(ImplFive.class),
         Six(ImplSix.class),
         Seven(ImplSeven.class),
         Eight(ImplEight.class),
@@ -63,7 +65,7 @@ public class TicketingDS implements TicketingSystem {
         }
         // TODO 这里指定默认实现方式。
         try {
-            switchImplType(ImplType.Three);
+            switchImplType(ImplType.Twelve);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException | IOException e) {
             e.printStackTrace();
             System.exit(-1);
@@ -76,7 +78,9 @@ public class TicketingDS implements TicketingSystem {
         }
         this.actualImpl = type.implClass.getConstructor(TicketingDS.class).newInstance(this);
         this.soldTickIds = new ThreadLocal<>();
+//        this.soldTickIds = new ConcurrentHashMap<>();
         this.currTid = new ThreadLocal<>();
+//        this.currTid = new AtomicInteger();
         this.nextTidRegion = new AtomicInteger();
         this.currTidRegion = new ThreadLocal<>();
     }
@@ -131,7 +135,8 @@ public class TicketingDS implements TicketingSystem {
     }
 
     protected int getCurrThreadNextTid() {
-        if (this.currTid.get() == null) {
+//        return currTid.getAndIncrement();
+        if (this.currTidRegion.get() == null) {
             initThreadLocal();
             this.currTidRegion.set(nextTidRegion.getAndIncrement());
             this.currTid.set(this.currTidRegion.get() * tidRegionSpan);
@@ -152,6 +157,7 @@ public class TicketingDS implements TicketingSystem {
             if (this.soldTickIds.get() == null) {
                 initThreadLocal();
             }
+//            soldTickIds.put(boughtTicket.tid, true);
             soldTickIds.get().add(boughtTicket.tid);
         }
         return boughtTicket;
@@ -167,6 +173,7 @@ public class TicketingDS implements TicketingSystem {
         if (soldTickIds.get() == null) {
             initThreadLocal();
         }
+//        if (!soldTickIds.containsKey(ticket.tid)) {
         if (!soldTickIds.get().remove(ticket.tid)) {
             // 无效票
             return false;
@@ -314,14 +321,14 @@ public class TicketingDS implements TicketingSystem {
 
             public CoachSeatPair(int seatIdx) {
                 this.coach = seatIdx / SEAT_NUM + 1;
-                this.seat = seatIdx - (coach - 1) * SEAT_NUM;
+                this.seat = seatIdx - (coach - 1) * SEAT_NUM + 1;
                 this.seatIdx = seatIdx;
             }
 
             public CoachSeatPair(int coach, int seat) {
                 this.coach = coach;
                 this.seat = seat;
-                this.seatIdx = (coach - 1) * SEAT_NUM + seat;
+                this.seatIdx = (coach - 1) * SEAT_NUM + seat - 1;
             }
         }
     }
@@ -356,7 +363,7 @@ public class TicketingDS implements TicketingSystem {
             }
             BitSet[] station2seats = data[route - 1];
             BitSet seatsMerged = (BitSet) station2seats[departure - 1].clone();
-            for (int i = departure - 1; i <= arrival - 1; i++) {
+            for (int i = departure - 1; i <= arrival - 2; i++) {
                 try {
                     seatsMerged.or(station2seats[i]);
                     if (seatsMerged.size() != station2seats[i].size()) {
@@ -371,7 +378,7 @@ public class TicketingDS implements TicketingSystem {
 
         protected int doBuyTicket(BitSet[] station2seats, int departure, int arrival) {
             BitSet seatsMerged = (BitSet) station2seats[departure - 1].clone();
-            for (int i = departure - 1; i <= arrival - 1; i++) {
+            for (int i = departure - 1; i <= arrival - 2; i++) {
                 seatsMerged.or(station2seats[i]);
             }
             int seatIdx = seatsMerged.previousClearBit(SEAT_NUM * COACH_NUM - 1);
@@ -379,7 +386,7 @@ public class TicketingDS implements TicketingSystem {
                 // 无票
                 return seatIdx;
             }
-            for (int i = departure - 1; i <= arrival - 1; i++) {
+            for (int i = departure - 1; i <= arrival - 2; i++) {
                 station2seats[i].set(seatIdx);
             }
             return seatIdx;
@@ -388,12 +395,12 @@ public class TicketingDS implements TicketingSystem {
         protected boolean doRefundTicket(BitSet[] station2seats, Ticket ticket) {
             // 检查座位所有departure到arrival的站是否全部被占用
             CoachSeatPair p = new CoachSeatPair(ticket.coach, ticket.seat);
-            for (int i = ticket.departure - 1; i <= ticket.arrival - 1; i++) {
+            for (int i = ticket.departure - 1; i <= ticket.arrival - 2; i++) {
                 if (!station2seats[i].get(p.seatIdx)) {
                     return false;
                 }
             }
-            for (int i = ticket.departure - 1; i <= ticket.arrival - 1; i++) {
+            for (int i = ticket.departure - 1; i <= ticket.arrival - 2; i++) {
                 station2seats[i].set(p.seatIdx, false);
             }
             return true;
@@ -544,7 +551,7 @@ public class TicketingDS implements TicketingSystem {
             for (int i = 0; i < maxStation; i++) {
                 for (int j = i + 1; j < maxStation; j++) {
                     int l = j - i;
-                    int ones = ((~0) >>> (maxStation - l - 1));
+                    int ones = ((~0) >>> (maxStation - l));
                     ones <<= i;
                     dep2arrOnesMasks[i][j] = ones;
                 }
@@ -579,7 +586,8 @@ public class TicketingDS implements TicketingSystem {
         }
 
         protected int tryBuyWithInRange(int route, int departure, int arrival, int left, int right, ThreadLocalRandom random) {
-            int startIdx = random.nextInt(left, right + 1);
+            // int startIdx = random.nextInt(left, right + 1);
+            int startIdx = left;
             int currIdx = startIdx;
             boolean buyResult = false;
             while (currIdx >= left) {
@@ -749,135 +757,6 @@ public class TicketingDS implements TicketingSystem {
     }
 
     /**
-     * 使用boolean[][][]数组代替BitSet的方案。这种方案能够在座位粒度上进行同步。
-     * 是ImplOne数据结构的变种。但是由于使用boolean数组，导致不能利用位图的快速合并功能，其查询的复杂度大大提升。效率比较一般。
-     */
-    private class ImplFive extends ImplCommon {
-        protected final boolean[][][] data;
-
-        protected final AtomicBoolean[][] seatFlags;
-
-        public ImplFive() {
-            super();
-            data = new boolean[ROUTE_NUM][STATION_NUM][COACH_NUM * SEAT_NUM];
-            seatFlags = new AtomicBoolean[ROUTE_NUM][COACH_NUM * SEAT_NUM];
-            for (AtomicBoolean[] seatFlag : seatFlags) {
-                for (int i = 0; i < seatFlag.length; i++) {
-                    seatFlag[i] = new AtomicBoolean(false);
-                }
-            }
-        }
-
-        @Override
-        public int inquiry(int route, int departure, int arrival) {
-            if (isParamsInvalid(route, departure, arrival)) {
-                return -1;
-            }
-            // 保证内存可见性。
-            readStatus(route);
-            boolean[] seatsMerged = inquiryMergedSeats(route, departure, arrival);
-            int zeroCount = 0;
-            for (boolean occupied : seatsMerged) {
-                if (!occupied) {
-                    zeroCount++;
-                }
-            }
-            return zeroCount;
-        }
-
-        private boolean[] inquiryMergedSeats(int route, int departure, int arrival) {
-            boolean[][] station2seats = data[route - 1];
-            boolean[] seatsMerged = new boolean[COACH_NUM * SEAT_NUM];
-            for (int i = departure - 1; i <= arrival - 1; i++) {
-                boolean[] seats = station2seats[i];
-                for (int j = 0; j < seats.length; j++) {
-                    seatsMerged[j] = seatsMerged[j] || seats[j];
-                }
-            }
-            return seatsMerged;
-        }
-
-        @Override
-        public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
-            ThreadLocalRandom random = ThreadLocalRandom.current();
-            readStatus(route);
-            try {
-                boolean[][] station2seats = data[route - 1];
-                while (true) {
-                    boolean[] seatsMerged = inquiryMergedSeats(route, departure, arrival);
-                    boolean haveFoundAnEmpty = false;
-                    int start = random.nextInt(COACH_NUM * SEAT_NUM);
-                    int count = 0;
-                    findNextEmpty:
-                    for (int seatIdx = start; count < COACH_NUM * SEAT_NUM; seatIdx = (seatIdx + 1) % (SEAT_NUM * COACH_NUM)) {
-                        count++;
-                        if (seatsMerged[seatIdx]) {
-                            continue;
-                        }
-                        // find a empty seat
-                        haveFoundAnEmpty = true;
-                        for (int j = 0; j < 5; j++) {
-                            if (!seatFlags[route - 1][seatIdx].compareAndSet(false, true)) {
-                                Thread.sleep(0, random.nextInt(10));
-                            } else {
-                                // do check again
-                                for (int currStation = departure - 1; currStation <= arrival - 1; currStation++) {
-                                    if (station2seats[currStation][seatIdx]) {
-                                        seatFlags[route - 1][seatIdx].setOpaque(false);
-                                        continue findNextEmpty;
-                                    }
-                                }
-                                for (int currStation = departure - 1; currStation <= arrival - 1; currStation++) {
-                                    station2seats[currStation][seatIdx] = true;
-                                }
-                                seatFlags[route - 1][seatIdx].setOpaque(false);
-                                CoachSeatPair p = new CoachSeatPair(seatIdx);
-                                return buildTicket(getCurrThreadNextTid(), passenger, route, p.coach, p.seat, departure, arrival);
-                            }
-                        }
-                    }
-                    if (!haveFoundAnEmpty) {
-                        return null;
-                    }
-                }
-            } catch (Exception e) {
-                System.out.println(e.getMessage());
-                System.exit(-1);
-                return null;
-            } finally {
-                writeStatus(route);
-            }
-        }
-
-
-        @Override
-        public boolean refundTicket(Ticket ticket) {
-            boolean[][] station2seats = data[ticket.route - 1];
-            // 检查座位所有departure到arrival的站是否全部被占用
-            CoachSeatPair p = new CoachSeatPair(ticket.coach, ticket.seat);
-            for (int i = ticket.departure - 1; i <= ticket.arrival - 1; i++) {
-                if (!station2seats[i][p.seatIdx]) {
-                    return false;
-                }
-            }
-            ThreadLocalRandom random = ThreadLocalRandom.current();
-            while (!seatFlags[ticket.route - 1][p.seatIdx].compareAndSet(false, true)) {
-                try {
-                    Thread.sleep(0, random.nextInt(5));
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            for (int i = ticket.departure - 1; i <= ticket.arrival - 1; i++) {
-                station2seats[i][p.seatIdx] = false;
-            }
-            seatFlags[ticket.route - 1][p.seatIdx].setOpaque(false);
-            writeStatus(ticket.route);
-            return true;
-        }
-    }
-
-    /**
      * ImplUsingOneArray
      * 数据结构：只建立一个超长数组。数组长度为 ROUTE_NUM * COACH_NUM * SEAT_NUM / (64 / STATION_NUM)
      * 每个元素为long类型，该数字的全部比特按照车站数量进行分组。
@@ -898,7 +777,6 @@ public class TicketingDS implements TicketingSystem {
         protected long[][] longArray;
 
         protected long[][][] dep2arr2posMasks;
-        protected long[][] dep2arr2inqMasks;
 
         protected int[][] crowd;
 
@@ -967,11 +845,10 @@ public class TicketingDS implements TicketingSystem {
         }
 
         // 使用64位存储多个座位的信息，每个座位包含其全部车站的信息。
-        protected final int seatsPerLong = 64 / STATION_NUM;
+        protected final int seatsPerLong = 64 / (STATION_NUM - 1);
 
         protected void initMasks() {
             dep2arr2posMasks = new long[STATION_NUM][STATION_NUM][seatsPerLong];
-            dep2arr2inqMasks = new long[STATION_NUM][STATION_NUM];
             for (int i = 0; i < dep2arr2posMasks.length; i++) {
                 dep2arr2posMasks[i] = new long[STATION_NUM][seatsPerLong];
                 for (int j = i + 1; j < dep2arr2posMasks[i].length; j++) {
@@ -988,10 +865,10 @@ public class TicketingDS implements TicketingSystem {
                                 ones |= 1 << m;
                             }
 
-                            int onesMask = (ones >> (STATION_NUM - l) - 1) << i;
+                            int onesMask = (ones >> (STATION_NUM - l)) << i;
                             dep2arr2posMasks[i][j][0] = onesMask;
                         } else {
-                            dep2arr2posMasks[i][j][k] = dep2arr2posMasks[i][j][k - 1] << STATION_NUM;
+                            dep2arr2posMasks[i][j][k] = dep2arr2posMasks[i][j][k - 1] << (STATION_NUM - 1);
                         }
                     }
                 }
@@ -1128,7 +1005,17 @@ public class TicketingDS implements TicketingSystem {
                 if (partIdx == crowdParts.length - 1) {
                     right++;
                 }
-                int startIdx = random.nextInt(left, Math.min(seatsForRoute.length, right));
+                int startIdx;
+                int rightBound = Math.min(seatsForRoute.length, right);
+                if (left > rightBound) {
+                    System.out.println("left > rightBound");
+                    System.exit(-1);
+                }
+                if (left == rightBound) {
+                    startIdx = left;
+                } else {
+                    startIdx = random.nextInt(left, rightBound);
+                }
                 int currIdx = startIdx;
                 while (currIdx >= left) {
                     boughtSeatIdxOnRoute = trySetOccupied(route, currIdx, departure, arrival, true);
@@ -1200,7 +1087,8 @@ public class TicketingDS implements TicketingSystem {
         }
 
         protected int tryBuyWithInRange(int route, int departure, int arrival, int left, int right, ThreadLocalRandom random) {
-            int startIdx = random.nextInt(left, right + 1);
+            // int startIdx = random.nextInt(left, right + 1);
+            int startIdx = left;
 
             int currIdx = startIdx;
             int boughtSeatIdxOnRoute = -1;
@@ -1514,10 +1402,9 @@ public class TicketingDS implements TicketingSystem {
 
         protected DepArr[] extractEmptyParts(int seatInfo) {
             int startEmpty = -1;
-            int endEmpty = -1;
             DepArr[] emptyParts = new DepArr[STATION_NUM / 2];
             int emptyPartsIdx = 0;
-            for (int i = 0; i < STATION_NUM; i++) {
+            for (int i = 0; i < STATION_NUM - 1; i++) {
                 int o = (seatInfo & (1 << i));
                 if (o == 0) {
                     if (startEmpty == -1) {
@@ -1525,18 +1412,13 @@ public class TicketingDS implements TicketingSystem {
                     }
                 } else {
                     if (startEmpty != -1) {
-                        endEmpty = i - 1;
-                        if (endEmpty == startEmpty) {
-                            startEmpty = -1;
-                            continue;
-                        }
-                        emptyParts[emptyPartsIdx++] = new DepArr(startEmpty, endEmpty);
+                        emptyParts[emptyPartsIdx++] = new DepArr(startEmpty, i);
                         startEmpty = -1;
                     }
                 }
             }
             if (startEmpty != -1) {
-                emptyParts[emptyPartsIdx] = new DepArr(startEmpty, STATION_NUM - 1);
+                emptyParts[emptyPartsIdx] = new DepArr(startEmpty, STATION_NUM);
             }
             return emptyParts;
         }
@@ -1614,13 +1496,13 @@ public class TicketingDS implements TicketingSystem {
             // first try to use dep arr available seats
             boolean buyResult = false;
             int boughtIdx = -1;
-            for (int seatIdx : availableSeats[route - 1][departure - 1][arrival - 1].keySet()) {
-                buyResult = setOccupiedInverted(route, seatIdx, departure, arrival, true, true);
-                if (buyResult) {
-                    boughtIdx = seatIdx;
-                    break;
-                }
-            }
+//            for (int seatIdx : availableSeats[route - 1][departure - 1][arrival - 1].keySet()) {
+//                buyResult = setOccupiedInverted(route, seatIdx, departure, arrival, true, true);
+//                if (buyResult) {
+//                    boughtIdx = seatIdx;
+//                    break;
+//                }
+//            }
 
             if (!buyResult) {
                 int left = (route - 1) * COACH_NUM * SEAT_NUM;

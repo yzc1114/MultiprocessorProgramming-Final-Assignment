@@ -21,9 +21,9 @@ public class Test {
     private static final int STATION_NUM = 10;
     private static final int FUNC_CALL_COUNT = 100000;
 
-    private static int THREAD_NUM = 16;
+    private static int THREAD_NUM = 1;
 
-    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 100;
+    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 10;
 
     private static final boolean PRINT_BUY_INFO = false;
 
@@ -37,12 +37,13 @@ public class Test {
 
     private static void doVariousThreadNumMultiThreadTest() throws InterruptedException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException, IOException {
         int[] THREAD_NUMS = new int[]{4, 8, 16, 32, 64};
+//        int[] THREAD_NUMS = new int[]{1};
         for (int thread_num : THREAD_NUMS) {
             System.out.println("-------------- START TEST THREAD NUM = " + thread_num + " --------------");
             System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
-//            repeatDoMultiThreadTest(TicketingDS.ImplType.Four, REPEAT_MULTI_THREAD_TEST_COUNT);
+//            repeatDoMultiThreadTest(TicketingDS.ImplType.Seven, REPEAT_MULTI_THREAD_TEST_COUNT);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
                 repeatDoMultiThreadTest(value, REPEAT_MULTI_THREAD_TEST_COUNT);
             }

@@ -1,0 +1,10 @@
+1. Put your TicketingDS.java and related files in the ticketingsystem directory.
+2. GenerateHistory's parameters are threadNum, testNum, isSequential, msec and nsec. 
+isSequential=1 denotes for sequential execution. VeriLinS only check sequential execution.
+3. VeriLinS's parameters are threadNum, historyFile, isPosttime and outputFile.
+The history file generted by GenereateHistory is out of order even in sequnetial execution.
+Thus VerilinS first sort the history file according to preTime or postTime. isPosttime=1 denotes sorting by postTime. outputFile is the sorted file.
+4. If your program passed the verification of VeriLinS for verify.sh script, message "Verification Finished" is print. Otherwisze, VeriLinS will print the information of the first found error and "Verification Failed".
+5. Replay.java is only used for replaying and debugging in an IDE enviornment. You can set a breakpoint at line 158 if the error line occurs at the line 158 of history file. 
+
+
