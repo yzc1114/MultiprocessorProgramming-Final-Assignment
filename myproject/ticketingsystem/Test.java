@@ -23,7 +23,7 @@ public class Test {
 
     private static int THREAD_NUM = 1;
 
-    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 10;
+    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 5;
 
     private static final boolean PRINT_BUY_INFO = false;
 
@@ -36,20 +36,20 @@ public class Test {
     }
 
     private static void doVariousThreadNumMultiThreadTest() throws InterruptedException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException, IOException {
-        int[] THREAD_NUMS = new int[]{4, 8, 16, 32, 64};
+        int[] THREAD_NUMS = new int[]{64};
 //        int[] THREAD_NUMS = new int[]{1};
         for (int thread_num : THREAD_NUMS) {
             System.out.println("-------------- START TEST THREAD NUM = " + thread_num + " --------------");
             System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
-//            repeatDoMultiThreadTest(TicketingDS.ImplType.Seven, REPEAT_MULTI_THREAD_TEST_COUNT);
+//            repeatDoMultiThreadTest(TicketingDS.ImplType.Three, REPEAT_MULTI_THREAD_TEST_COUNT);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
                 repeatDoMultiThreadTest(value, REPEAT_MULTI_THREAD_TEST_COUNT);
             }
             System.out.println("--------------- END TEST THREAD NUM = " + thread_num + " ---------------\n\n");
         }
-        tds.switchImplType(TicketingDS.ImplType.One);
+        tds.switchImplType(TicketingDS.ImplType.Fourteen);
     }
 
     private static void implFundamentalTests() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
@@ -58,7 +58,7 @@ public class Test {
             tds.switchImplType(value);
             doFundamentalTest();
         }
-        tds.switchImplType(TicketingDS.ImplType.One);
+        tds.switchImplType(TicketingDS.ImplType.Fourteen);
     }
 
     private static void doFundamentalTest() {
@@ -202,6 +202,7 @@ public class Test {
         int fullRefFuncCallCount = thread2Statistics.values().stream().mapToInt(TicketConsumerStatistics::getTryRefCount).sum();
 
         double best_throughPut_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTimePerEpoch;
+        double mid_throughPut_nano = (1. * fullFuncCallCount / repeatCount) / midFullElapsedTimePerEpoch;
         double avg_throughPut_nano = (1. * fullFuncCallCount / repeatCount) / avgFullElapsedTimePerEpoch;
         double best_throughPut_inner_nano = (1. * fullFuncCallCount / repeatCount) / minFullElapsedTimeInnerPerEpoch;
         double avg_throughPut_inner_nano = (1. * fullFuncCallCount / repeatCount) / avgFullElapsedTimeInnerPerEpoch;
@@ -212,6 +213,7 @@ public class Test {
         System.out.printf("minFullElapsedTimeInnerPerEpoch = %d, maxFullElapsedTimeInnerPerEpoch = %d\navgFullElapsedTimeInnerPerEpoch = %d, midFullElapsedTimeInnerPerEpoch = %d\n", minFullElapsedTimeInnerPerEpoch, maxFullElapsedTimeInnerPerEpoch, avgFullElapsedTimeInnerPerEpoch, midFullElapsedTimeInnerPerEpoch);
         System.out.printf("fullFuncCallCount = %d, avgFuncCallCount = %d\n", fullFuncCallCount, avgFuncCallCount);
         System.out.println("best_throughPut(func/nano) = " + best_throughPut_nano);
+        System.out.println("mid_throughput(func/nano) = " + mid_throughPut_nano);
         System.out.println("avg_throughPut(func/nano) = " + avg_throughPut_nano);
         System.out.println("best_throughPut_inner(func/nano) = " + best_throughPut_nano);
         System.out.println("avg_throughPut_inner(func/nano) = " + avg_throughPut_inner_nano);
