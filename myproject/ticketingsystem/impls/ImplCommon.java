@@ -1,37 +1,40 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
-import ticketingsystem.TicketingSystem;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public abstract class ImplCommon implements TicketingSystem {
+public abstract class ImplCommon {
 
     protected TicketingDS.TicketingDSParam param;
 
-    protected final static int S_JUST_WROTE = 0;
-    protected final int[] status;
     protected final VarHandle statusVH;
+    protected boolean[][] route2statusForEachThread;
+
+    protected void initStatus() {
+        route2statusForEachThread = new boolean[param.ROUTE_NUM][param.THREAD_NUM];
+        for (int i = 0; i < route2statusForEachThread.length; i++) {
+            route2statusForEachThread[i] = new boolean[param.THREAD_NUM];
+        }
+    }
+
+    protected void readStatus(int route) {
+        for (int i = 0; i < param.THREAD_NUM; i++) {
+            statusVH.getAcquire(this.route2statusForEachThread[route - 1], i);
+        }
+    }
+
+    protected void writeStatus(int route) {
+        statusVH.setRelease(this.route2statusForEachThread[route - 1], getMappedThreadID(), false);
+    }
 
     public ImplCommon(TicketingDS.TicketingDSParam param) {
         this.param = param;
 
-        status = new int[param.ROUTE_NUM];
-        for (int i = 0; i < param.ROUTE_NUM; i++) {
-            status[i] = S_JUST_WROTE;
-        }
-        statusVH = MethodHandles.arrayElementVarHandle(int[].class);
-    }
-
-    protected void readStatus(int route) {
-        statusVH.getVolatile(this.status, route - 1);
-    }
-
-    protected void writeStatus(int route) {
-        statusVH.setVolatile(this.status, route - 1, S_JUST_WROTE);
+        statusVH = MethodHandles.arrayElementVarHandle(boolean[].class);
+        initStatus();
     }
 
     // for thread mapping id
@@ -71,51 +74,6 @@ public abstract class ImplCommon implements TicketingSystem {
         mapped = currMappedThreadID.getAndIncrement();
         mappedThreadID.set(mapped);
         return mapped;
-    }
-
-
-    protected class Seat {
-        protected final int seatIdx;
-
-        protected int route;
-        protected int coach;
-        protected int seat;
-
-        Seat(int seatIdx) {
-            this.seatIdx = seatIdx;
-        }
-
-        Seat(int route, int coach, int seat) {
-            this.route = route;
-            this.coach = coach;
-            this.seat = seat;
-            this.seatIdx = (param.COACH_NUM * param.SEAT_NUM * (route - 1)) + (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
-        }
-
-        public int getRoute() {
-            if (this.route == 0) {
-                this.route = (getSeatIdx() / (param.COACH_NUM * param.SEAT_NUM)) + 1;
-            }
-            return this.route;
-        }
-
-        public int getCoach() {
-            if (this.coach == 0) {
-                this.coach = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (getRoute() - 1))) / param.SEAT_NUM + 1;
-            }
-            return this.coach;
-        }
-
-        public int getSeat() {
-            if (this.seat == 0) {
-                this.seat = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (route - 1)) - (param.SEAT_NUM * (coach - 1))) + 1;
-            }
-            return this.seat;
-        }
-
-        public int getSeatIdx() {
-            return this.seatIdx;
-        }
     }
 
     protected class CoachSeatPair {
@@ -174,4 +132,10 @@ public abstract class ImplCommon implements TicketingSystem {
         t.arrival = arrival;
         return t;
     }
+
+    abstract public Ticket buyTicket(String passenger, int route, int departure, int arrival);
+
+    abstract public int inquiry(int route, int departure, int arrival);
+
+    abstract public boolean refundTicket(Ticket ticket);
 }

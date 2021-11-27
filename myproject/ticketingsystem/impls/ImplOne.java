@@ -1,6 +1,5 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
 
 import java.util.BitSet;
@@ -14,14 +13,14 @@ public class ImplOne extends ImplWithStationOnTop {
         super(param);
     }
 
-    @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
         if (isParamsInvalid(route, departure, arrival)) {
             return null;
         }
-        BitSet[] station2seats;
+        BitSet[] station2seats = data[route - 1];
         int seatIdx;
-        synchronized (station2seats = data[route - 1]) {
+        synchronized (station2seats) {
+//        synchronized (this) {
             seatIdx = doBuyTicket(station2seats, departure, arrival);
             writeStatus(route);
         }
@@ -32,13 +31,13 @@ public class ImplOne extends ImplWithStationOnTop {
         return buildTicket(getCurrThreadNextTid(), passenger, route, p.coach, p.seat, departure, arrival);
     }
 
-    @Override
     public boolean refundTicket(Ticket ticket) {
         if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
             return false;
         }
-        BitSet[] station2seats;
-        synchronized (station2seats = data[ticket.route - 1]) {
+        BitSet[] station2seats = data[ticket.route - 1];
+        synchronized (station2seats) {
+//        synchronized (this) {
             boolean res = doRefundTicket(station2seats, ticket);
             writeStatus(ticket.route);
             return res;

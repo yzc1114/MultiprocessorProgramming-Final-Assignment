@@ -7,33 +7,26 @@ import java.lang.invoke.VarHandle;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * ImplUsingOneArray
- * 数据结构：只建立一个超长数组。数组长度为 ROUTE_NUM * COACH_NUM * SEAT_NUM
- * 每个元素为int或long类型，该数字的每个比特表示在某个车站是否有人已经占座。
- * 当车站数量<32时，使用int数组，当车站数量>32且<=64时，使用long数组。
- * <p>
- * 写入数据时，使用setOccupiedInverted方法，默认使用CAS方法写入数据，避免加锁。
+ * 类似于ImplUsingOneArray的存储结构，但是使用route的多个数组存储。
  */
-public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
-    /**
-     * vh 使用笔记：
-     * getOpaque(x) 确保读取内存中的x的数据，避免读cache。
-     * getAcquire(x)通常与setRelease(x)搭配 setAcquire(x)通常与getRelease(x)搭配。
-     * getAcquire保证在该行代码之后的代码不会重排序到这行之前执行。
-     * setRelease保证在该行代码之前的代码不会重排序到这行之后执行。
-     * getVolatile 分别保证这行代码的前面与后面的代码不会重排序到后面与前面。
-     */
+public abstract class ImplUsingMultiArray extends ImplWithOneIntStationMasks {
     protected VarHandle vh;
-    protected int[] intArray;
+    protected int[][] route2intArray;
+
+    public ImplUsingMultiArray(TicketingDS.TicketingDSParam param) {
+        super(param);
+        initDataArray();
+        initMasks();
+    }
 
     protected class Seat {
         protected final int seatIdx;
-
-        protected int route;
+        protected final int route;
         protected int coach;
         protected int seat;
 
-        Seat(int seatIdx) {
+        Seat(int route, int seatIdx) {
+            this.route = route;
             this.seatIdx = seatIdx;
         }
 
@@ -41,26 +34,23 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
             this.route = route;
             this.coach = coach;
             this.seat = seat;
-            this.seatIdx = (param.COACH_NUM * param.SEAT_NUM * (route - 1)) + (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
+            this.seatIdx = (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
         }
 
         public int getRoute() {
-            if (this.route == 0) {
-                this.route = (getSeatIdx() / (param.COACH_NUM * param.SEAT_NUM)) + 1;
-            }
             return this.route;
         }
 
         public int getCoach() {
             if (this.coach == 0) {
-                this.coach = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (getRoute() - 1))) / param.SEAT_NUM + 1;
+                this.coach = getSeatIdx() / param.SEAT_NUM + 1;
             }
             return this.coach;
         }
 
         public int getSeat() {
             if (this.seat == 0) {
-                this.seat = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (route - 1)) - (param.SEAT_NUM * (coach - 1))) + 1;
+                this.seat = getSeatIdx() - (param.SEAT_NUM * (coach - 1)) + 1;
             }
             return this.seat;
         }
@@ -70,21 +60,15 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
         }
     }
 
-    public ImplUsingOneArray(TicketingDS.TicketingDSParam param) {
-        super(param);
-        initDataArray();
-        initMasks();
-    }
-
     protected void initDataArray() {
-        intArray = new int[param.ROUTE_NUM * param.COACH_NUM * param.SEAT_NUM];
+        route2intArray = new int[param.ROUTE_NUM][param.COACH_NUM * param.SEAT_NUM];
         vh = MethodHandles.arrayElementVarHandle(int[].class);
     }
 
     protected boolean setOccupiedInverted(int route, int seatIdx, int departure, int arrival, boolean occupied, boolean tryWithLoop) {
         int expectedSeatInfo, newSeatInfo;
         for (; ; ) {
-            expectedSeatInfo = intArray[seatIdx];
+            expectedSeatInfo = route2intArray[route - 1][seatIdx];
             if (!checkSeatInfo(expectedSeatInfo, departure, arrival, !occupied)) {
                 // 从departure到arrival站区间内，有与occupied相反的位数，即
                 // 若occupied为true，即我们想将departure到arrival的站点全部设置为true，首先需要确保这些站点当前为false。
@@ -97,7 +81,7 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
             } else {
                 newSeatInfo &= ~dep2arrOnesMasks[departure - 1][arrival - 1];
             }
-            boolean fail = !vh.compareAndSet(intArray, seatIdx, expectedSeatInfo, newSeatInfo);
+            boolean fail = !vh.compareAndSet(route2intArray[route - 1], seatIdx, expectedSeatInfo, newSeatInfo);
             if (!fail) {
                 return true;
             }
@@ -109,7 +93,6 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
 
     protected int tryBuyWithInRange(int route, int departure, int arrival, int left, int right, ThreadLocalRandom random) {
         int startIdx = random.nextInt(left, right + 1);
-//            int startIdx = left;
         int currIdx = startIdx;
         boolean buyResult = false;
         while (currIdx >= left) {
@@ -152,9 +135,9 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
         // 保证内存可见性
         readStatus(route);
         int res = 0;
-        for (int i = (route - 1) * param.COACH_NUM * param.SEAT_NUM; i < route * param.COACH_NUM * param.SEAT_NUM; i++) {
+        for (int i = 0; i < param.COACH_NUM * param.SEAT_NUM; i++) {
             // 保证可见性后使用plain的方式读取即可
-            if (checkSeatInfo(intArray[i], departure, arrival, false)) {
+            if (checkSeatInfo(route2intArray[route][i], departure, arrival, false)) {
                 // 当前座位idx为i，如果检查从departure 到 arrival之间的位数都为false，即可证明该座位的该区间没有被占用，可以增加余票数量。
                 res++;
             }

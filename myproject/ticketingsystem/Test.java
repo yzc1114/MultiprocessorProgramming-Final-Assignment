@@ -36,14 +36,13 @@ public class Test {
     }
 
     private static void doVariousThreadNumMultiThreadTest() throws InterruptedException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException, IOException {
-        int[] THREAD_NUMS = new int[]{64};
-//        int[] THREAD_NUMS = new int[]{1};
+        int[] THREAD_NUMS = new int[]{4, 8, 16, 32, 64};
         for (int thread_num : THREAD_NUMS) {
             System.out.println("-------------- START TEST THREAD NUM = " + thread_num + " --------------");
             System.out.println("Thread Num = " + thread_num);
             THREAD_NUM = thread_num;
             tds = new TicketingDS(ROUTE_NUM, COACH_NUM, SEAT_NUM, STATION_NUM, THREAD_NUM);
-//            repeatDoMultiThreadTest(TicketingDS.ImplType.Three, REPEAT_MULTI_THREAD_TEST_COUNT);
+//            repeatDoMultiThreadTest(TicketingDS.ImplType.Sixteen, REPEAT_MULTI_THREAD_TEST_COUNT);
             for (TicketingDS.ImplType value : TicketingDS.ImplType.values()) {
                 repeatDoMultiThreadTest(value, REPEAT_MULTI_THREAD_TEST_COUNT);
             }

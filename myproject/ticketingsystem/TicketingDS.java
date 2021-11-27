@@ -30,15 +30,17 @@ public class TicketingDS implements TicketingSystem {
         Eleven(ImplEleven.class),
         Twelve(ImplTwelve.class),
         Thirteen(ImplThirteen.class),
-        Fourteen(ImplFourteen.class);
-        private final Class<? extends TicketingSystem> implClass;
+        Fourteen(ImplFourteen.class),
+        Fifteen(ImplFifteen.class),
+        Sixteen(ImplSixteen.class);
+        private final Class<? extends ImplCommon> implClass;
 
-        ImplType(Class<? extends TicketingSystem> implClass) {
+        ImplType(Class<? extends ImplCommon> implClass) {
             this.implClass = implClass;
         }
     }
 
-    private TicketingSystem actualImpl;
+    private ImplCommon actualImpl;
 
     public static class TicketingDSParam {
         public final int ROUTE_NUM;
@@ -68,7 +70,7 @@ public class TicketingDS implements TicketingSystem {
 
     private void setDefaultImpl() {
         try {
-            switchImplType(ImplType.Eight);
+            switchImplType(ImplType.One);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException | IOException e) {
             e.printStackTrace();
             System.exit(-1);
@@ -83,7 +85,7 @@ public class TicketingDS implements TicketingSystem {
         this.soldTickIds = new ThreadLocal<>();
     }
 
-    public Class<? extends TicketingSystem> getImplClass() {
+    public Class<? extends ImplCommon> getImplClass() {
         return actualImpl.getClass();
     }
 
@@ -91,16 +93,41 @@ public class TicketingDS implements TicketingSystem {
         this.soldTickIds.set(new HashSet<>());
     }
 
+    public Ticket transform(ticketingsystem.impls.Ticket t) {
+        Ticket n = new Ticket();
+        n.route = t.route;
+        n.departure = t.departure;
+        n.arrival = t.arrival;
+        n.coach = t.coach;
+        n.seat = t.seat;
+        n.passenger = t.passenger;
+        n.tid = t.tid;
+        return n;
+    }
+
+    public ticketingsystem.impls.Ticket transform(Ticket t) {
+        ticketingsystem.impls.Ticket n = new ticketingsystem.impls.Ticket();
+        n.route = t.route;
+        n.departure = t.departure;
+        n.arrival = t.arrival;
+        n.coach = t.coach;
+        n.seat = t.seat;
+        n.passenger = t.passenger;
+        n.tid = t.tid;
+        return n;
+    }
+
     @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
-        Ticket boughtTicket = actualImpl.buyTicket(passenger, route, departure, arrival);
+        ticketingsystem.impls.Ticket boughtTicket = actualImpl.buyTicket(passenger, route, departure, arrival);
         if (boughtTicket != null) {
             if (this.soldTickIds.get() == null) {
                 initThreadLocal();
             }
             soldTickIds.get().add(boughtTicket.tid);
+            return transform(boughtTicket);
         }
-        return boughtTicket;
+        return null;
     }
 
     @Override
@@ -117,7 +144,7 @@ public class TicketingDS implements TicketingSystem {
             // 无效票
             return false;
         }
-        return actualImpl.refundTicket(ticket);
+        return actualImpl.refundTicket(transform(ticket));
     }
 
 }

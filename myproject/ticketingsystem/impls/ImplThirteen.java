@@ -1,6 +1,5 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
 
 public class ImplThirteen extends ImplTwelve {

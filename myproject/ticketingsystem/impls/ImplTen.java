@@ -1,6 +1,5 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
 
 import java.io.Closeable;
@@ -166,13 +165,13 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
         // first try to use dep arr available seats
         boolean buyResult = false;
         int boughtIdx = -1;
-//            for (int seatIdx : availableSeats[route - 1][departure - 1][arrival - 1].keySet()) {
-//                buyResult = setOccupiedInverted(route, seatIdx, departure, arrival, true, true);
-//                if (buyResult) {
-//                    boughtIdx = seatIdx;
-//                    break;
-//                }
-//            }
+        for (int seatIdx : availableSeats[route - 1][departure - 1][arrival - 1].keySet()) {
+            buyResult = setOccupiedInverted(route, seatIdx, departure, arrival, true, true);
+            if (buyResult) {
+                boughtIdx = seatIdx;
+                break;
+            }
+        }
 
         if (!buyResult) {
             int left = (route - 1) * param.COACH_NUM * param.SEAT_NUM;

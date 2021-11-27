@@ -1,6 +1,5 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
 
 import java.lang.invoke.MethodHandles;
@@ -14,7 +13,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * ImplUsingOneArray
  * 数据结构：只建立一个超长数组。数组长度为 ROUTE_NUM * COACH_NUM * param.SEAT_NUM / (64 / (STATION_NUM - 1))
  * 每个元素为long类型，该数字的全部比特按照车站数量进行分组。
- * 如64位的数字，车站有10个，则可以使用低54位表示6个座位的全部车站。
+ * 如64位的数字，车站有10个，则可以使用低63位表示7个座位的全部车站。
  * <p>
  * 写入数据时，使用setOccupiedInverted方法，默认使用CAS方法写入数据，避免加锁。
  */
@@ -300,7 +299,6 @@ public class ImplSix extends ImplCommon {
         return buildTicket(getCurrThreadNextTid(), passenger, route, s.getCoach(), s.getSeat(), departure, arrival);
     }
 
-    @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
         Ticket t = doBuyTicket(passenger, route, departure, arrival);
         if (t == null) {
@@ -313,13 +311,7 @@ public class ImplSix extends ImplCommon {
         return t;
     }
 
-    @Override
-    public int inquiry(int route, int departure, int arrival) {
-        if (isParamsInvalid(route, departure, arrival)) {
-            return -1;
-        }
-        // 保证内存可见性
-        readStatus(route);
+    protected int doInquiry(int route, int departure, int arrival) {
         int res = 0;
         long[] seatsForRoute = longArray[route - 1];
         for (long l : seatsForRoute) {
@@ -327,6 +319,15 @@ public class ImplSix extends ImplCommon {
         }
         res -= seatsPerLong - param.COACH_NUM * param.SEAT_NUM % seatsPerLong;
         return res;
+    }
+
+    public int inquiry(int route, int departure, int arrival) {
+        if (isParamsInvalid(route, departure, arrival)) {
+            return -1;
+        }
+        // 保证内存可见性
+        readStatus(route);
+        return doInquiry(route, departure, arrival);
     }
 
     protected boolean doRefundTicket(Ticket ticket) {
@@ -339,7 +340,6 @@ public class ImplSix extends ImplCommon {
         return suc;
     }
 
-    @Override
     public boolean refundTicket(Ticket ticket) {
         boolean res = doRefundTicket(ticket);
         if (res) {

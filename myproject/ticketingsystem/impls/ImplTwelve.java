@@ -1,6 +1,5 @@
 package ticketingsystem.impls;
 
-import ticketingsystem.Ticket;
 import ticketingsystem.TicketingDS;
 
 import java.util.concurrent.ThreadLocalRandom;
