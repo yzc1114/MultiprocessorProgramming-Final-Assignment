@@ -77,9 +77,9 @@ public abstract class ImplCommon {
     }
 
     protected class CoachSeatPair {
-        protected int coach;
-        protected int seat;
-        protected int seatIdx;
+        public int coach;
+        public int seat;
+        public int seatIdx;
 
         public CoachSeatPair(int seatIdx) {
             this.coach = seatIdx / param.SEAT_NUM + 1;

@@ -194,6 +194,9 @@ public class GenerateHistory {
                             ;
                         }
                     }
+                    List<Long> preTimes = new ArrayList<>();
+                    List<Long> postTimes = new ArrayList<>();
+                    List<String> methods = new ArrayList<>();
                     for (int k = 0; k < testnum; k++) {
                         int sel = rand.nextInt(totalPc);
                         int cnt = 0;
@@ -222,7 +225,10 @@ public class GenerateHistory {
                                 boolean flag = execute(j);
                                 long postTime = System.nanoTime() - startTime;
                                 if (flag) {
-                                    print(preTime, postTime, methodList.get(j));
+                                    preTimes.add(preTime);
+                                    postTimes.add(postTime);
+                                    methods.add(methodList.get(j));
+                                    // print(preTime, postTime, methodList.get(j));
                                 }
                                 cnt += freqList.get(j);
                             }
@@ -230,6 +236,9 @@ public class GenerateHistory {
 
                         if (isSequential)
                             SLOCK_GIVE();
+                    }
+                    for (int idx = 0; idx < preTimes.size(); idx++) {
+                        print(preTimes.get(idx), postTimes.get(idx), methods.get(idx));
                     }
                     if (isSequential) {
                         fin[ThreadId.get()] = true;
