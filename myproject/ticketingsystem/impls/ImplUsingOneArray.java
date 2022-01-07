@@ -129,6 +129,7 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
         Ticket t = doBuyTicket(passenger, route, departure, arrival);
         if (t != null) {
+            writeStatus(route);
             return t;
         }
         int[] status = null;
