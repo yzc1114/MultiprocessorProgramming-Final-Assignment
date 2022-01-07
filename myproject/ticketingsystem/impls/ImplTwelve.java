@@ -8,15 +8,14 @@ import java.util.concurrent.ThreadLocalRandom;
  * 考虑了数据局部性，基于ImplEight的实现。
  */
 public class ImplTwelve extends ImplEight {
+    protected int partsCount;
+    protected int partLength;
+
     public ImplTwelve(TicketingDS.TicketingDSParam param) {
         super(param);
         partsCount = param.COACH_NUM;
         partLength = arrayLength / param.COACH_NUM;
     }
-
-    protected int partsCount;
-
-    protected int partLength;
 
     protected Ticket doBuyTicket(String passenger, int route, int departure, int arrival) {
         if (isParamsInvalid(route, departure, arrival)) {

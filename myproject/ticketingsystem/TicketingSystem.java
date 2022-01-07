@@ -1,5 +1,13 @@
 package ticketingsystem;
 
+public interface TicketingSystem {
+    Ticket buyTicket(String passenger, int route, int departure, int arrival);
+
+    int inquiry(int route, int departure, int arrival);
+
+    boolean refundTicket(Ticket ticket);
+}
+
 class Ticket {
     public long tid;
     public String passenger;
@@ -21,13 +29,4 @@ class Ticket {
                 ", arrival=" + arrival +
                 '}';
     }
-}
-
-
-public interface TicketingSystem {
-    Ticket buyTicket(String passenger, int route, int departure, int arrival);
-
-    int inquiry(int route, int departure, int arrival);
-
-    boolean refundTicket(Ticket ticket);
 }

@@ -10,14 +10,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ImplNine extends ImplSix {
 
     protected ViewHelper viewHelper;
+    protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
+    protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
 
     public ImplNine(TicketingDS.TicketingDSParam param) {
         super(param);
         this.viewHelper = new ViewHelper(param);
     }
-
-    protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
-    protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
 
     protected int getMappedThreadID() {
         Integer mapped;

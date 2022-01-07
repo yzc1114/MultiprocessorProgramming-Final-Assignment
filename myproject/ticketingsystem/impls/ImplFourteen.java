@@ -3,12 +3,12 @@ package ticketingsystem.impls;
 import ticketingsystem.TicketingDS;
 
 public class ImplFourteen extends ImplEleven {
+    protected ThreadLocalViewHelper threadLocalViewHelper;
+
     public ImplFourteen(TicketingDS.TicketingDSParam param) {
         super(param);
         this.threadLocalViewHelper = new ThreadLocalViewHelper(param);
     }
-
-    protected ThreadLocalViewHelper threadLocalViewHelper;
 
     @Override
     public int inquiry(int route, int departure, int arrival) {

@@ -18,6 +18,11 @@ import java.util.concurrent.ThreadLocalRandom;
  * 写入数据时，使用setOccupiedInverted方法，默认使用CAS方法写入数据，避免加锁。
  */
 public class ImplSix extends ImplCommon {
+    // 使用64位存储多个座位的信息，每个座位包含其全部车站的信息。
+    protected final int seatsPerLong = 64 / (param.STATION_NUM - 1);
+    protected final int partCount = param.COACH_NUM;
+    protected final int seatsPerPart = param.COACH_NUM * param.SEAT_NUM / partCount;
+    protected final int arrayLength = param.COACH_NUM * param.SEAT_NUM / seatsPerLong + 1;
     /**
      * vh 使用笔记：
      * getOpaque(x) 确保读取内存中的x的数据，避免读cache。
@@ -28,77 +33,14 @@ public class ImplSix extends ImplCommon {
      */
     protected VarHandle vh;
     protected long[][] longArray;
-
     protected long[][][] dep2arr2posMasks;
-
     protected int[][] crowd;
 
-    protected class Seat {
-        // 表示该座位在该车次的相对位置。
-        protected final int seatIdxOnRoute;
-        protected final int route;
-        protected int coach;
-        protected int seat;
-        protected int seatContainerElemIdx;
-        protected int seatPosInContainerElem;
-
-        Seat(int route, int seatIdxOnRoute) {
-            this.route = route;
-            this.seatIdxOnRoute = seatIdxOnRoute;
-            getCoach();
-            getSeat();
-            getSeatPosInContainerElem();
-            getSeatContainerElemIdx();
-        }
-
-        Seat(int route, int coach, int seat) {
-            this.route = route;
-            this.coach = coach;
-            this.seat = seat;
-            this.seatIdxOnRoute = (param.SEAT_NUM * (coach - 1)) + seat - 1;
-            getSeatPosInContainerElem();
-            getSeatContainerElemIdx();
-        }
-
-        public int getRoute() {
-            return this.route;
-        }
-
-        public int getCoach() {
-            if (this.coach == 0) {
-                this.coach = getSeatIdxOnRoute() / param.SEAT_NUM + 1;
-            }
-            return this.coach;
-        }
-
-        public int getSeat() {
-            if (this.seat == 0) {
-                this.seat = getSeatIdxOnRoute() - (param.SEAT_NUM * (coach - 1)) + 1;
-            }
-            return this.seat;
-        }
-
-        public int getSeatIdxOnRoute() {
-            return this.seatIdxOnRoute;
-        }
-
-        public int getSeatContainerElemIdx() {
-            if (this.seatContainerElemIdx == 0) {
-                this.seatContainerElemIdx = getSeatIdxOnRoute() / seatsPerLong;
-            }
-            return this.seatContainerElemIdx;
-        }
-
-        public int getSeatPosInContainerElem() {
-            if (this.seatPosInContainerElem == 0) {
-                this.seatPosInContainerElem = getSeatIdxOnRoute() % seatsPerLong;
-            }
-            return this.seatPosInContainerElem;
-        }
+    public ImplSix(TicketingDS.TicketingDSParam param) {
+        super(param);
+        initDataArray();
+        initMasks();
     }
-
-    // 使用64位存储多个座位的信息，每个座位包含其全部车站的信息。
-    protected final int seatsPerLong = 64 / (param.STATION_NUM - 1);
 
     protected void initMasks() {
         dep2arr2posMasks = new long[param.STATION_NUM][param.STATION_NUM][seatsPerLong];
@@ -127,18 +69,6 @@ public class ImplSix extends ImplCommon {
             }
         }
     }
-
-    public ImplSix(TicketingDS.TicketingDSParam param) {
-        super(param);
-        initDataArray();
-        initMasks();
-    }
-
-    protected final int partCount = param.COACH_NUM;
-
-    protected final int seatsPerPart = param.COACH_NUM * param.SEAT_NUM / partCount;
-
-    protected final int arrayLength = param.COACH_NUM * param.SEAT_NUM / seatsPerLong + 1;
 
     protected void initDataArray() {
         crowd = new int[param.ROUTE_NUM][partCount];
@@ -346,5 +276,69 @@ public class ImplSix extends ImplCommon {
             writeStatus(ticket.route);
         }
         return res;
+    }
+
+    protected class Seat {
+        // 表示该座位在该车次的相对位置。
+        protected final int seatIdxOnRoute;
+        protected final int route;
+        protected int coach;
+        protected int seat;
+        protected int seatContainerElemIdx;
+        protected int seatPosInContainerElem;
+
+        Seat(int route, int seatIdxOnRoute) {
+            this.route = route;
+            this.seatIdxOnRoute = seatIdxOnRoute;
+            getCoach();
+            getSeat();
+            getSeatPosInContainerElem();
+            getSeatContainerElemIdx();
+        }
+
+        Seat(int route, int coach, int seat) {
+            this.route = route;
+            this.coach = coach;
+            this.seat = seat;
+            this.seatIdxOnRoute = (param.SEAT_NUM * (coach - 1)) + seat - 1;
+            getSeatPosInContainerElem();
+            getSeatContainerElemIdx();
+        }
+
+        public int getRoute() {
+            return this.route;
+        }
+
+        public int getCoach() {
+            if (this.coach == 0) {
+                this.coach = getSeatIdxOnRoute() / param.SEAT_NUM + 1;
+            }
+            return this.coach;
+        }
+
+        public int getSeat() {
+            if (this.seat == 0) {
+                this.seat = getSeatIdxOnRoute() - (param.SEAT_NUM * (coach - 1)) + 1;
+            }
+            return this.seat;
+        }
+
+        public int getSeatIdxOnRoute() {
+            return this.seatIdxOnRoute;
+        }
+
+        public int getSeatContainerElemIdx() {
+            if (this.seatContainerElemIdx == 0) {
+                this.seatContainerElemIdx = getSeatIdxOnRoute() / seatsPerLong;
+            }
+            return this.seatContainerElemIdx;
+        }
+
+        public int getSeatPosInContainerElem() {
+            if (this.seatPosInContainerElem == 0) {
+                this.seatPosInContainerElem = getSeatIdxOnRoute() % seatsPerLong;
+            }
+            return this.seatPosInContainerElem;
+        }
     }
 }

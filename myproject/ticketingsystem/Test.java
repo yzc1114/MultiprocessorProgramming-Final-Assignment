@@ -11,8 +11,8 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class Test {
 
-    private static final int INQUIRY_RATIO = 70;
-    private static final int PURCHASE_RATIO = 20;
+    private static final int INQUIRY_RATIO = 60;
+    private static final int PURCHASE_RATIO = 30;
     private static final int REFUND_RATIO = 10;
 
     private static final int ROUTE_NUM = 10;
@@ -20,13 +20,9 @@ public class Test {
     private static final int SEAT_NUM = 100;
     private static final int STATION_NUM = 20;
     private static final int FUNC_CALL_COUNT = 100000;
-
-    private static int THREAD_NUM = 1;
-
-    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 5;
-
+    private static final int REPEAT_MULTI_THREAD_TEST_COUNT = 20;
     private static final boolean PRINT_BUY_INFO = false;
-
+    private static int THREAD_NUM = 1;
     private static TicketingDS tds;
     private static Map<String, TicketConsumerStatistics> thread2Statistics;
 
@@ -49,7 +45,7 @@ public class Test {
             }
             System.out.println("--------------- END TEST THREAD NUM = " + thread_num + " ---------------\n\n");
         }
-        tds.switchImplType(TicketingDS.ImplType.Fourteen);
+        tds.switchImplType(TicketingDS.ImplType.Fifteen);
     }
 
     private static void implFundamentalTests() throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
@@ -58,7 +54,7 @@ public class Test {
             tds.switchImplType(value);
             doFundamentalTest();
         }
-        tds.switchImplType(TicketingDS.ImplType.Fourteen);
+        tds.switchImplType(TicketingDS.ImplType.Fifteen);
     }
 
     private static void doFundamentalTest() {
@@ -75,78 +71,6 @@ public class Test {
         assert tds.refundTicket(ticket);
         ticketsNum = tds.inquiry(1, 4, 7);
         assert ticketsNum == SEAT_NUM * COACH_NUM - 1;
-    }
-
-    private static class TicketConsumerStatistics {
-        private int tryBuyCount = 0;
-        private int tryInqCount = 0;
-        private int tryRefCount = 0;
-        private long buyExecTime = 0;
-        private long inqExecTime = 0;
-        private long refExecTime = 0;
-        private int funcCallCount = 0;
-        private long fullExecTime = 0;
-        private long threadStartTime = 0;
-        private long threadEndTime = 0;
-
-        public int getTryBuyCount() {
-            return tryBuyCount;
-        }
-
-        public int getTryInqCount() {
-            return tryInqCount;
-        }
-
-        public int getTryRefCount() {
-            return tryRefCount;
-        }
-
-        public long getBuyExecTime() {
-            return buyExecTime;
-        }
-
-        public long getInqExecTime() {
-            return inqExecTime;
-        }
-
-        public long getRefExecTime() {
-            return refExecTime;
-        }
-
-        public int getFuncCallCount() {
-            return funcCallCount;
-        }
-
-        public long getFullExecTime() {
-            return fullExecTime;
-        }
-
-        public long getThreadStartTime() {
-            return threadStartTime;
-        }
-
-        public long getThreadEndTime() {
-            return threadEndTime;
-        }
-
-        public void add(int tryBuyCount, int tryInqCount, int tryRefCount, long buyExecTime, long inqExecTime, long refExecTime, long threadStartTime, long threadEndTime) {
-            TicketConsumerStatistics s = this;
-            s.tryBuyCount += tryBuyCount;
-            s.tryInqCount += tryInqCount;
-            s.tryRefCount += tryRefCount;
-            s.buyExecTime += buyExecTime;
-            s.inqExecTime += inqExecTime;
-            s.refExecTime += refExecTime;
-            s.funcCallCount += tryBuyCount + tryInqCount + tryRefCount;
-            s.fullExecTime += buyExecTime + inqExecTime + refExecTime;
-            s.threadStartTime = threadStartTime;
-            s.threadEndTime = threadEndTime;
-        }
-
-        public void nextEpoch() {
-            this.threadStartTime = 0;
-            this.threadEndTime = 0;
-        }
     }
 
     @SuppressWarnings("all")
@@ -223,6 +147,77 @@ public class Test {
         System.out.println("====================================================================\n");
     }
 
+    private static class TicketConsumerStatistics {
+        private int tryBuyCount = 0;
+        private int tryInqCount = 0;
+        private int tryRefCount = 0;
+        private long buyExecTime = 0;
+        private long inqExecTime = 0;
+        private long refExecTime = 0;
+        private int funcCallCount = 0;
+        private long fullExecTime = 0;
+        private long threadStartTime = 0;
+        private long threadEndTime = 0;
+
+        public int getTryBuyCount() {
+            return tryBuyCount;
+        }
+
+        public int getTryInqCount() {
+            return tryInqCount;
+        }
+
+        public int getTryRefCount() {
+            return tryRefCount;
+        }
+
+        public long getBuyExecTime() {
+            return buyExecTime;
+        }
+
+        public long getInqExecTime() {
+            return inqExecTime;
+        }
+
+        public long getRefExecTime() {
+            return refExecTime;
+        }
+
+        public int getFuncCallCount() {
+            return funcCallCount;
+        }
+
+        public long getFullExecTime() {
+            return fullExecTime;
+        }
+
+        public long getThreadStartTime() {
+            return threadStartTime;
+        }
+
+        public long getThreadEndTime() {
+            return threadEndTime;
+        }
+
+        public void add(int tryBuyCount, int tryInqCount, int tryRefCount, long buyExecTime, long inqExecTime, long refExecTime, long threadStartTime, long threadEndTime) {
+            TicketConsumerStatistics s = this;
+            s.tryBuyCount += tryBuyCount;
+            s.tryInqCount += tryInqCount;
+            s.tryRefCount += tryRefCount;
+            s.buyExecTime += buyExecTime;
+            s.inqExecTime += inqExecTime;
+            s.refExecTime += refExecTime;
+            s.funcCallCount += tryBuyCount + tryInqCount + tryRefCount;
+            s.fullExecTime += buyExecTime + inqExecTime + refExecTime;
+            s.threadStartTime = threadStartTime;
+            s.threadEndTime = threadEndTime;
+        }
+
+        public void nextEpoch() {
+            this.threadStartTime = 0;
+            this.threadEndTime = 0;
+        }
+    }
 
     private static class TicketConsumerRunner implements Runnable {
         @Override

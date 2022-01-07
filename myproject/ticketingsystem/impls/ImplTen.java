@@ -13,6 +13,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 使用后台线程，维护当前从departure到arrival的较精确空闲座位。
  */
 public class ImplTen extends ImplUsingOneArray implements Closeable {
+    protected AtomicBoolean shutdownThreadPool = new AtomicBoolean(false);
+    // route -> departure -> arrival -> ConcurrentHashMap
+    protected Map<Integer, Boolean>[][][] availableSeats = new Map[param.ROUTE_NUM][param.STATION_NUM][param.STATION_NUM];
+    protected BlockingQueue<Integer>[] rePuts = new BlockingQueue[param.THREAD_NUM];
+    protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
+    protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
+
     public ImplTen(TicketingDS.TicketingDSParam param) {
         super(param);
         initAvailableSeats();
@@ -23,11 +30,6 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
     public void close() throws IOException {
         shutdownThreadPool.set(true);
     }
-
-    protected AtomicBoolean shutdownThreadPool = new AtomicBoolean(false);
-
-    // route -> departure -> arrival -> ConcurrentHashMap
-    protected Map<Integer, Boolean>[][][] availableSeats = new Map[param.ROUTE_NUM][param.STATION_NUM][param.STATION_NUM];
 
     protected void initAvailableSeats() {
         for (int i = 0; i < availableSeats.length; i++) {
@@ -47,20 +49,6 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
                     availableSeats[s.getRoute() - 1][dep][arr].put(s.getSeatIdx(), true);
                 }
             }
-        }
-    }
-
-    protected class DepArr {
-        int dep;
-        int arr;
-
-        public DepArr(int dep, int arr) {
-            this.dep = dep;
-            this.arr = arr;
-        }
-
-        public boolean hold(int otherDep, int otherArr) {
-            return dep <= otherDep && arr >= otherArr;
         }
     }
 
@@ -109,8 +97,6 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
         }
     }
 
-    protected BlockingQueue<Integer>[] rePuts = new BlockingQueue[param.THREAD_NUM];
-
     protected void initThreadPool() {
         for (int i = 0; i < rePuts.length; i++) {
             rePuts[i] = new LinkedBlockingQueue<>();
@@ -132,9 +118,6 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
             }).start();
         }
     }
-
-    protected AtomicInteger currMappedThreadID = new AtomicInteger(0);
-    protected ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
 
     protected int getMappedThreadID() {
         Integer mapped;
@@ -199,5 +182,19 @@ public class ImplTen extends ImplUsingOneArray implements Closeable {
             submitToThreadPool(s.seatIdx);
         }
         return suc;
+    }
+
+    protected class DepArr {
+        int dep;
+        int arr;
+
+        public DepArr(int dep, int arr) {
+            this.dep = dep;
+            this.arr = arr;
+        }
+
+        public boolean hold(int otherDep, int otherArr) {
+            return dep <= otherDep && arr >= otherArr;
+        }
     }
 }

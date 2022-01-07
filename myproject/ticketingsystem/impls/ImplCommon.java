@@ -8,43 +8,84 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public abstract class ImplCommon {
 
-    protected TicketingDS.TicketingDSParam param;
-
+    private static final int tidRegionSpan = 10_000_000;
     protected final VarHandle statusVH;
-    protected boolean[][] route2statusForEachThread;
-
-    protected void initStatus() {
-        route2statusForEachThread = new boolean[param.ROUTE_NUM][param.THREAD_NUM];
-        for (int i = 0; i < route2statusForEachThread.length; i++) {
-            route2statusForEachThread[i] = new boolean[param.THREAD_NUM];
-        }
-    }
-
-    protected void readStatus(int route) {
-        for (int i = 0; i < param.THREAD_NUM; i++) {
-            statusVH.getAcquire(this.route2statusForEachThread[route - 1], i);
-        }
-    }
-
-    protected void writeStatus(int route) {
-        statusVH.setRelease(this.route2statusForEachThread[route - 1], getMappedThreadID(), false);
-    }
-
-    public ImplCommon(TicketingDS.TicketingDSParam param) {
-        this.param = param;
-
-        statusVH = MethodHandles.arrayElementVarHandle(boolean[].class);
-        initStatus();
-    }
-
+    //    protected boolean[][] route2statusForEachThread;
+//
+//    protected void initStatus() {
+//        route2statusForEachThread = new boolean[param.ROUTE_NUM][param.THREAD_NUM];
+//        for (int i = 0; i < route2statusForEachThread.length; i++) {
+//            route2statusForEachThread[i] = new boolean[param.THREAD_NUM];
+//        }
+//    }
+//
+//    protected final void readStatus(int route) {
+//        for (int i = 0; i < param.THREAD_NUM; i++) {
+//            statusVH.getAcquire(this.route2statusForEachThread[route - 1], i);
+//        }
+//    }
+//
+//    protected final void writeStatus(int route) {
+//        statusVH.setRelease(this.route2statusForEachThread[route - 1], getMappedThreadID(), false);
+//    }
+//
+//    public ImplCommon(TicketingDS.TicketingDSParam param) {
+//        this.param = param;
+//
+//        statusVH = MethodHandles.arrayElementVarHandle(boolean[].class);
+//        initStatus();
+//    }
     // for thread mapping id
     private final AtomicInteger currMappedThreadID = new AtomicInteger(0);
     private final ThreadLocal<Integer> mappedThreadID = new ThreadLocal<>();
     private final ThreadLocal<Integer> currTid = new ThreadLocal<>();
     private final AtomicInteger nextTidRegion = new AtomicInteger(0);
     private final ThreadLocal<Integer> currTidRegion = new ThreadLocal<>();
-    private static final int tidRegionSpan = 10_000_000;
+    protected TicketingDS.TicketingDSParam param;
+    protected int[][] route2statusForEachThread;
 
+    public ImplCommon(TicketingDS.TicketingDSParam param) {
+        this.param = param;
+        statusVH = MethodHandles.arrayElementVarHandle(int[].class);
+        initStatus();
+    }
+
+    protected static Ticket buildTicket(long tid,
+                                        String passenger,
+                                        int route,
+                                        int coach,
+                                        int seat,
+                                        int departure,
+                                        int arrival) {
+        Ticket t = new Ticket();
+        t.tid = tid;
+        t.passenger = passenger;
+        t.route = route;
+        t.coach = coach;
+        t.seat = seat;
+        t.departure = departure;
+        t.arrival = arrival;
+        return t;
+    }
+
+    protected void initStatus() {
+        route2statusForEachThread = new int[param.ROUTE_NUM][param.THREAD_NUM];
+        for (int i = 0; i < route2statusForEachThread.length; i++) {
+            route2statusForEachThread[i] = new int[param.THREAD_NUM];
+        }
+    }
+
+    protected final int[] readStatus(int route) {
+        int[] status = new int[param.THREAD_NUM];
+        for (int i = 0; i < param.THREAD_NUM; i++) {
+            status[i] = (int) statusVH.getAcquire(this.route2statusForEachThread[route - 1], i);
+        }
+        return status;
+    }
+
+    protected final void writeStatus(int route) {
+        statusVH.setRelease(this.route2statusForEachThread[route - 1], getMappedThreadID(), this.route2statusForEachThread[route - 1][getMappedThreadID()] + 1);
+    }
 
     protected void initThreadLocal() {
         this.currTid.set(0);
@@ -76,24 +117,6 @@ public abstract class ImplCommon {
         return mapped;
     }
 
-    protected class CoachSeatPair {
-        public int coach;
-        public int seat;
-        public int seatIdx;
-
-        public CoachSeatPair(int seatIdx) {
-            this.coach = seatIdx / param.SEAT_NUM + 1;
-            this.seat = seatIdx - (coach - 1) * param.SEAT_NUM + 1;
-            this.seatIdx = seatIdx;
-        }
-
-        public CoachSeatPair(int coach, int seat) {
-            this.coach = coach;
-            this.seat = seat;
-            this.seatIdx = (coach - 1) * param.SEAT_NUM + seat - 1;
-        }
-    }
-
     protected boolean isParamsInvalid(int routeNum, int departure, int arrival) {
         return !checkRoute(routeNum) || !checkDepartureArrival(departure, arrival);
     }
@@ -115,27 +138,27 @@ public abstract class ImplCommon {
                 && seatNum >= 1 && seatNum <= param.SEAT_NUM;
     }
 
-    protected static Ticket buildTicket(long tid,
-                                        String passenger,
-                                        int route,
-                                        int coach,
-                                        int seat,
-                                        int departure,
-                                        int arrival) {
-        Ticket t = new Ticket();
-        t.tid = tid;
-        t.passenger = passenger;
-        t.route = route;
-        t.coach = coach;
-        t.seat = seat;
-        t.departure = departure;
-        t.arrival = arrival;
-        return t;
-    }
-
     abstract public Ticket buyTicket(String passenger, int route, int departure, int arrival);
 
     abstract public int inquiry(int route, int departure, int arrival);
 
     abstract public boolean refundTicket(Ticket ticket);
+
+    protected class CoachSeatPair {
+        public int coach;
+        public int seat;
+        public int seatIdx;
+
+        public CoachSeatPair(int seatIdx) {
+            this.coach = seatIdx / param.SEAT_NUM + 1;
+            this.seat = seatIdx - (coach - 1) * param.SEAT_NUM + 1;
+            this.seatIdx = seatIdx;
+        }
+
+        public CoachSeatPair(int coach, int seat) {
+            this.coach = coach;
+            this.seat = seat;
+            this.seatIdx = (coach - 1) * param.SEAT_NUM + seat - 1;
+        }
+    }
 }

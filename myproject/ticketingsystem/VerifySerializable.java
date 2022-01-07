@@ -4,73 +4,20 @@ import java.io.*;
 import java.util.*;
 
 public class VerifySerializable {
-    static int threadNum;
-    static List<String> methodList = new ArrayList<String>();
-
-    /**********Manually Modified ***********/
-    static boolean isPosttime = true;
-    static boolean detail = false;
     final static int routenum = 3;
     final static int coachnum = 3;
     final static int seatnum = 3;
     final static int stationnum = 3;
-
+    static int threadNum;
+    static List<String> methodList = new ArrayList<String>();
+    /**********Manually Modified ***********/
+    static boolean isPosttime = true;
+    static boolean detail = false;
     static int debugMode = 1;
 
     static ArrayList<HistoryLine> history = new ArrayList<HistoryLine>();
     static TicketingDS object;
-
-    public static class hl_Comparator_1 implements Comparator<HistoryLine> {
-        @Override
-        public int compare(HistoryLine hl1, HistoryLine hl2) {
-            if (hl1.pretime - hl2.pretime > 0)
-                return 1;
-            else if (hl1.pretime - hl2.pretime == 0)
-                return 0;
-            else
-                return -1;
-        }
-    }
-
-    public static class hl_Comparator_2 implements Comparator<HistoryLine> {
-        @Override
-        public int compare(HistoryLine hl1, HistoryLine hl2) {
-            if (hl1.posttime - hl2.posttime > 0)
-                return 1;
-            else if (hl1.posttime - hl2.posttime == 0)
-                return 0;
-            else
-                return -1;
-        }
-    }
-
-    public static class HistoryLine {
-        long pretime;
-        long posttime;
-        int threadid;
-        String operationName;
-        long tid;
-        String passenger;
-        int route;
-        int coach;
-        int seat;
-        int departure;
-        int arrival;
-        String res;
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            HistoryLine that = (HistoryLine) o;
-            return pretime == that.pretime && posttime == that.posttime && threadid == that.threadid && tid == that.tid && route == that.route && coach == that.coach && seat == that.seat && departure == that.departure && arrival == that.arrival && operationName.equals(that.operationName) && passenger.equals(that.passenger) && res.equals(that.res);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(pretime, posttime, threadid, operationName, tid, passenger, route, coach, seat, departure, arrival, res);
-        }
-    }
+    private static Map<TicketBoughtRecord, List<ticketingsystem.impls.Ticket>> boughtTickets;
 
     private static boolean parseline(ArrayList<HistoryLine> historyList, String line) {
         Scanner linescanner = new Scanner(line);
@@ -217,7 +164,6 @@ public class VerifySerializable {
 
     }
 
-
     public static void main(String[] args) throws InterruptedException {
         if (args.length != 3) {
             System.out.println("The parameter list of VeriLin is threadNum, historyFile, failedTrace.");
@@ -242,38 +188,6 @@ public class VerifySerializable {
         boolean res = dfs(currHistorySeq, new HashSet<>());
         System.out.println("doSerializableTest res = " + res);
     }
-
-    private static class TicketBoughtRecord {
-        public String passenger;
-        public int route;
-        public int departure;
-        public int arrival;
-
-        public TicketBoughtRecord() {
-        }
-
-        public TicketBoughtRecord(String passenger, int route, int departure, int arrival) {
-            this.passenger = passenger;
-            this.route = route;
-            this.departure = departure;
-            this.arrival = arrival;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            TicketBoughtRecord that = (TicketBoughtRecord) o;
-            return route == that.route && departure == that.departure && arrival == that.arrival && passenger.equals(that.passenger);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(passenger, route, departure, arrival);
-        }
-    }
-
-    private static Map<TicketBoughtRecord, List<ticketingsystem.impls.Ticket>> boughtTickets;
 
     private static boolean dfs(List<HistoryLine> currHistorySeq, Set<Integer> visited) {
         if (visited.size() == history.size()) {
@@ -378,13 +292,94 @@ public class VerifySerializable {
         return true;
     }
 
-
     public interface SerialTicketingSystem {
         ticketingsystem.impls.Ticket buyTicket(String passenger, int route, int departure, int arrival);
 
         int inquiry(int route, int departure, int arrival);
 
         boolean refundTicket(ticketingsystem.impls.Ticket ticket);
+    }
+
+    public static class hl_Comparator_1 implements Comparator<HistoryLine> {
+        @Override
+        public int compare(HistoryLine hl1, HistoryLine hl2) {
+            if (hl1.pretime - hl2.pretime > 0)
+                return 1;
+            else if (hl1.pretime - hl2.pretime == 0)
+                return 0;
+            else
+                return -1;
+        }
+    }
+
+    public static class hl_Comparator_2 implements Comparator<HistoryLine> {
+        @Override
+        public int compare(HistoryLine hl1, HistoryLine hl2) {
+            if (hl1.posttime - hl2.posttime > 0)
+                return 1;
+            else if (hl1.posttime - hl2.posttime == 0)
+                return 0;
+            else
+                return -1;
+        }
+    }
+
+    public static class HistoryLine {
+        long pretime;
+        long posttime;
+        int threadid;
+        String operationName;
+        long tid;
+        String passenger;
+        int route;
+        int coach;
+        int seat;
+        int departure;
+        int arrival;
+        String res;
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            HistoryLine that = (HistoryLine) o;
+            return pretime == that.pretime && posttime == that.posttime && threadid == that.threadid && tid == that.tid && route == that.route && coach == that.coach && seat == that.seat && departure == that.departure && arrival == that.arrival && operationName.equals(that.operationName) && passenger.equals(that.passenger) && res.equals(that.res);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(pretime, posttime, threadid, operationName, tid, passenger, route, coach, seat, departure, arrival, res);
+        }
+    }
+
+    private static class TicketBoughtRecord {
+        public String passenger;
+        public int route;
+        public int departure;
+        public int arrival;
+
+        public TicketBoughtRecord() {
+        }
+
+        public TicketBoughtRecord(String passenger, int route, int departure, int arrival) {
+            this.passenger = passenger;
+            this.route = route;
+            this.departure = departure;
+            this.arrival = arrival;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            TicketBoughtRecord that = (TicketBoughtRecord) o;
+            return route == that.route && departure == that.departure && arrival == that.arrival && passenger.equals(that.passenger);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(passenger, route, departure, arrival);
+        }
     }
 
     public static class TicketingDSSerialCancelableImplOne extends ticketingsystem.impls.ImplOne implements SerialTicketingSystem {

@@ -8,6 +8,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * 继承MultiArray的实现，在inquiry时使用jdk17的向量化指令加速（若是intel cpu，则是intel AVX指令集加速）
  */
 public class ImplFifteen extends ImplUsingMultiArray {
+
     public ImplFifteen(TicketingDS.TicketingDSParam param) {
         super(param);
         initMasks();
@@ -20,6 +21,10 @@ public class ImplFifteen extends ImplUsingMultiArray {
         }
         // 保证内存可见性
         readStatus(route);
+        return doInquiry(route, departure, arrival);
+    }
+
+    protected int doInquiry(int route, int departure, int arrival) {
         int mask = dep2arrOnesMasks[departure - 1][arrival - 1];
         int res = VectorizedHelper.intVectorMasked(route2intArray[route - 1], mask);
         return param.SEAT_NUM * param.COACH_NUM - res;

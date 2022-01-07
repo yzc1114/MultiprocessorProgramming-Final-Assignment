@@ -7,14 +7,13 @@ import java.util.Arrays;
 public class ThreadLocalViewHelper {
 
     private final TicketingDS.TicketingDSParam param;
+    protected int[][] threadLocalView;
 
     public ThreadLocalViewHelper(TicketingDS.TicketingDSParam param) {
         this.param = param;
         this.threadLocalView = new int[param.THREAD_NUM][param.STATION_NUM];
         initThreadLocalView();
     }
-
-    protected int[][] threadLocalView;
 
     protected void initThreadLocalView() {
         for (int i = 0; i < param.THREAD_NUM; i++) {

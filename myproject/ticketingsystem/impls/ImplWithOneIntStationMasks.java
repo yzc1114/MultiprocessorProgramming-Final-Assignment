@@ -7,6 +7,10 @@ public abstract class ImplWithOneIntStationMasks extends ImplCommon {
     protected int[] stationMasks;
     protected int[][] dep2arrOnesMasks;
 
+    public ImplWithOneIntStationMasks(TicketingDS.TicketingDSParam param) {
+        super(param);
+    }
+
     protected void initMasks() {
         int maxStation = 32;
         stationMasks = new int[maxStation];
@@ -25,9 +29,5 @@ public abstract class ImplWithOneIntStationMasks extends ImplCommon {
                 dep2arrOnesMasks[i][j] = ones;
             }
         }
-    }
-
-    public ImplWithOneIntStationMasks(TicketingDS.TicketingDSParam param) {
-        super(param);
     }
 }

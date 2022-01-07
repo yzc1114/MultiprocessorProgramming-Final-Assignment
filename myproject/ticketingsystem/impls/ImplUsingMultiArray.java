@@ -4,6 +4,7 @@ import ticketingsystem.TicketingDS;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -17,47 +18,6 @@ public abstract class ImplUsingMultiArray extends ImplWithOneIntStationMasks {
         super(param);
         initDataArray();
         initMasks();
-    }
-
-    protected class Seat {
-        protected final int seatIdx;
-        protected final int route;
-        protected int coach;
-        protected int seat;
-
-        Seat(int route, int seatIdx) {
-            this.route = route;
-            this.seatIdx = seatIdx;
-        }
-
-        Seat(int route, int coach, int seat) {
-            this.route = route;
-            this.coach = coach;
-            this.seat = seat;
-            this.seatIdx = (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
-        }
-
-        public int getRoute() {
-            return this.route;
-        }
-
-        public int getCoach() {
-            if (this.coach == 0) {
-                this.coach = getSeatIdx() / param.SEAT_NUM + 1;
-            }
-            return this.coach;
-        }
-
-        public int getSeat() {
-            if (this.seat == 0) {
-                this.seat = getSeatIdx() - (param.SEAT_NUM * (coach - 1)) + 1;
-            }
-            return this.seat;
-        }
-
-        public int getSeatIdx() {
-            return this.seatIdx;
-        }
     }
 
     protected void initDataArray() {
@@ -127,38 +87,55 @@ public abstract class ImplUsingMultiArray extends ImplWithOneIntStationMasks {
         }
     }
 
-    @Override
-    public int inquiry(int route, int departure, int arrival) {
-        if (isParamsInvalid(route, departure, arrival)) {
-            return -1;
-        }
-        // 保证内存可见性
-        readStatus(route);
-        int res = 0;
-        for (int i = 0; i < param.COACH_NUM * param.SEAT_NUM; i++) {
-            // 保证可见性后使用plain的方式读取即可
-            if (checkSeatInfo(route2intArray[route][i], departure, arrival, false)) {
-                // 当前座位idx为i，如果检查从departure 到 arrival之间的位数都为false，即可证明该座位的该区间没有被占用，可以增加余票数量。
-                res++;
-            }
-        }
-        return res;
-    }
+    abstract public int inquiry(int route, int departure, int arrival);
+
+    abstract protected int doInquiry(int route, int departure, int arrival);
 
     abstract protected Ticket doBuyTicket(String passenger, int route, int departure, int arrival);
 
     @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
         Ticket t = doBuyTicket(passenger, route, departure, arrival);
-        if (t == null) {
-            readStatus(route);
-            t = doBuyTicket(passenger, route, departure, arrival);
-        }
         if (t != null) {
-            writeStatus(route);
+            return t;
         }
-        return t;
+        int[] status = null;
+        while (true) {
+            if (status == null) {
+                status = readStatus(route);
+            }
+            if (doInquiry(route, departure, arrival) == 0) {
+                int[] newStatus = readStatus(route);
+                if (0 == Arrays.compare(status, newStatus)) {
+                    return null;
+                }
+            }
+            t = doBuyTicket(passenger, route, departure, arrival);
+            if (t != null) {
+                writeStatus(route);
+                return t;
+            } else {
+                int[] newStatus = readStatus(route);
+                if (0 == Arrays.compare(status, newStatus)) {
+                    return null;
+                }
+                status = newStatus;
+            }
+        }
     }
+
+//    @Override
+//    public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+//        Ticket t = doBuyTicket(passenger, route, departure, arrival);
+//        if (t == null) {
+//            readStatus(route);
+//            t = doBuyTicket(passenger, route, departure, arrival);
+//        }
+//        if (t != null) {
+//            writeStatus(route);
+//        }
+//        return t;
+//    }
 
     protected boolean doRefundTicket(Ticket ticket) {
         if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
@@ -175,5 +152,46 @@ public abstract class ImplUsingMultiArray extends ImplWithOneIntStationMasks {
             writeStatus(ticket.route);
         }
         return res;
+    }
+
+    protected class Seat {
+        protected final int seatIdx;
+        protected final int route;
+        protected int coach;
+        protected int seat;
+
+        Seat(int route, int seatIdx) {
+            this.route = route;
+            this.seatIdx = seatIdx;
+        }
+
+        Seat(int route, int coach, int seat) {
+            this.route = route;
+            this.coach = coach;
+            this.seat = seat;
+            this.seatIdx = (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
+        }
+
+        public int getRoute() {
+            return this.route;
+        }
+
+        public int getCoach() {
+            if (this.coach == 0) {
+                this.coach = getSeatIdx() / param.SEAT_NUM + 1;
+            }
+            return this.coach;
+        }
+
+        public int getSeat() {
+            if (this.seat == 0) {
+                this.seat = getSeatIdx() - (param.SEAT_NUM * (coach - 1)) + 1;
+            }
+            return this.seat;
+        }
+
+        public int getSeatIdx() {
+            return this.seatIdx;
+        }
     }
 }

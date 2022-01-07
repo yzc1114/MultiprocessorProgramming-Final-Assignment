@@ -5,65 +5,19 @@ import java.util.*;
 
 
 public class Replay {
-    static int threadNum;
-    static List<String> methodList = new ArrayList<String>();
-
-    /**********Manually Modified ***********/
-    static boolean isPosttime = true;
-    static boolean detail = false;
     final static int routenum = 3;
     final static int coachnum = 3;
     final static int seatnum = 3;
     final static int stationnum = 3;
-
+    static int threadNum;
+    static List<String> methodList = new ArrayList<String>();
+    /**********Manually Modified ***********/
+    static boolean isPosttime = true;
+    static boolean detail = false;
     static int debugMode = 1;
 
     static ArrayList<HistoryLine> history = new ArrayList<HistoryLine>();
     static TicketingDS object;
-
-    public static class hl_Comparator_1 implements Comparator<HistoryLine> {
-        @Override
-        public int compare(HistoryLine hl1, HistoryLine hl2) {
-            if (hl1.pretime - hl2.pretime > 0)
-                return 1;
-            else if (hl1.pretime - hl2.pretime == 0)
-                return 0;
-            else
-                return -1;
-        }
-
-        ;
-    }
-
-    public static class hl_Comparator_2 implements Comparator<HistoryLine> {
-        @Override
-        public int compare(HistoryLine hl1, HistoryLine hl2) {
-            if (hl1.posttime - hl2.posttime > 0)
-                return 1;
-            else if (hl1.posttime - hl2.posttime == 0)
-                return 0;
-            else
-                return -1;
-        }
-
-        ;
-    }
-
-    public static class HistoryLine {
-        long pretime;
-        long posttime;
-        int threadid;
-        String operationName;
-        long tid;
-        String passenger;
-        int route;
-        int coach;
-        int seat;
-        int departure;
-        int arrival;
-        String res;
-
-    }
 
     private static boolean parseline(ArrayList<HistoryLine> historyList, String line) {
         Scanner linescanner = new Scanner(line);
@@ -213,7 +167,6 @@ public class Replay {
 
     }
 
-
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws InterruptedException {
         if (args.length != 4) {
@@ -253,6 +206,50 @@ public class Replay {
         }
         endMs = System.currentTimeMillis();
         System.out.println("checking time = " + (endMs - startMs));
+
+    }
+
+    public static class hl_Comparator_1 implements Comparator<HistoryLine> {
+        @Override
+        public int compare(HistoryLine hl1, HistoryLine hl2) {
+            if (hl1.pretime - hl2.pretime > 0)
+                return 1;
+            else if (hl1.pretime - hl2.pretime == 0)
+                return 0;
+            else
+                return -1;
+        }
+
+        ;
+    }
+
+    public static class hl_Comparator_2 implements Comparator<HistoryLine> {
+        @Override
+        public int compare(HistoryLine hl1, HistoryLine hl2) {
+            if (hl1.posttime - hl2.posttime > 0)
+                return 1;
+            else if (hl1.posttime - hl2.posttime == 0)
+                return 0;
+            else
+                return -1;
+        }
+
+        ;
+    }
+
+    public static class HistoryLine {
+        long pretime;
+        long posttime;
+        int threadid;
+        String operationName;
+        long tid;
+        String passenger;
+        int route;
+        int coach;
+        int seat;
+        int departure;
+        int arrival;
+        String res;
 
     }
 }

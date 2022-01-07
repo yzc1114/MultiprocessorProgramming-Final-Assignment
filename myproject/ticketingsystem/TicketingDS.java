@@ -1,6 +1,7 @@
 package ticketingsystem;
 
-import ticketingsystem.impls.*;
+import ticketingsystem.impls.ImplCommon;
+import ticketingsystem.impls.ImplFifteen;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -12,52 +13,7 @@ public class TicketingDS implements TicketingSystem {
     public TicketingDSParam param;
 
     private ThreadLocal<HashSet<Long>> soldTickIds;
-
-    public static void main(String[] args) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
-    }
-
-    public enum ImplType {
-        One(ImplOne.class),
-        Two(ImplTwo.class),
-        Three(ImplThree.class),
-        Four(ImplFour.class),
-        // Five(ImplFive.class),
-        Six(ImplSix.class),
-        Seven(ImplSeven.class),
-        Eight(ImplEight.class),
-        Nine(ImplNine.class),
-        Ten(ImplTen.class),
-        Eleven(ImplEleven.class),
-        Twelve(ImplTwelve.class),
-        Thirteen(ImplThirteen.class),
-        Fourteen(ImplFourteen.class),
-        Fifteen(ImplFifteen.class),
-        Sixteen(ImplSixteen.class);
-        //        Seventeen(ImplSevenTeen.class);
-        private final Class<? extends ImplCommon> implClass;
-
-        ImplType(Class<? extends ImplCommon> implClass) {
-            this.implClass = implClass;
-        }
-    }
-
     private ImplCommon actualImpl;
-
-    public static class TicketingDSParam {
-        public final int ROUTE_NUM;
-        public final int COACH_NUM;
-        public final int SEAT_NUM;
-        public final int STATION_NUM;
-        public final int THREAD_NUM;
-
-        public TicketingDSParam(int routenum, int coachnum, int seatnum, int stationnum, int threadnum) {
-            ROUTE_NUM = routenum;
-            COACH_NUM = coachnum;
-            SEAT_NUM = seatnum;
-            STATION_NUM = stationnum;
-            THREAD_NUM = threadnum;
-        }
-    }
 
     public TicketingDS(int routenum, int coachnum, int seatnum, int stationnum, int threadnum) {
         if (routenum <= 0 || coachnum <= 0 || seatnum <= 0 || stationnum <= 0 || threadnum <= 0) {
@@ -67,6 +23,9 @@ public class TicketingDS implements TicketingSystem {
         param = new TicketingDSParam(routenum, coachnum, seatnum, stationnum, threadnum);
         // TODO 这里指定默认实现方式。
         setDefaultImpl();
+    }
+
+    public static void main(String[] args) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
     }
 
     private void setDefaultImpl() {
@@ -146,6 +105,47 @@ public class TicketingDS implements TicketingSystem {
             return false;
         }
         return actualImpl.refundTicket(transform(ticket));
+    }
+
+    public enum ImplType {
+        //        One(ImplOne.class),
+//        Two(ImplTwo.class),
+//        Three(ImplThree.class),
+//        Four(ImplFour.class),
+//        Five(ImplFive.class),
+//        Six(ImplSix.class),
+//        Seven(ImplSeven.class),
+//        Eight(ImplEight.class),
+//        Nine(ImplNine.class),
+//        Ten(ImplTen.class),
+//        Eleven(ImplEleven.class),
+//        Twelve(ImplTwelve.class),
+//        Thirteen(ImplThirteen.class),
+//        Fourteen(ImplFourteen.class),
+        Fifteen(ImplFifteen.class);
+        //        Sixteen(ImplSixteen.class);
+        //        Seventeen(ImplSevenTeen.class);
+        private final Class<? extends ImplCommon> implClass;
+
+        ImplType(Class<? extends ImplCommon> implClass) {
+            this.implClass = implClass;
+        }
+    }
+
+    public static class TicketingDSParam {
+        public final int ROUTE_NUM;
+        public final int COACH_NUM;
+        public final int SEAT_NUM;
+        public final int STATION_NUM;
+        public final int THREAD_NUM;
+
+        public TicketingDSParam(int routenum, int coachnum, int seatnum, int stationnum, int threadnum) {
+            ROUTE_NUM = routenum;
+            COACH_NUM = coachnum;
+            SEAT_NUM = seatnum;
+            STATION_NUM = stationnum;
+            THREAD_NUM = threadnum;
+        }
     }
 
 }

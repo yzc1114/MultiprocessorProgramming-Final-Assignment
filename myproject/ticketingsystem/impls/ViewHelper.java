@@ -7,14 +7,13 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 
 class ViewHelper {
+    protected AtomicReference<int[]>[] views = null;
     private TicketingDS.TicketingDSParam param;
 
     public ViewHelper(TicketingDS.TicketingDSParam param) {
         this.param = param;
         initViews();
     }
-
-    protected AtomicReference<int[]>[] views = null;
 
     protected void initViews() {
         views = new AtomicReference[param.ROUTE_NUM];

@@ -4,6 +4,7 @@ import ticketingsystem.TicketingDS;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -25,50 +26,6 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
      */
     protected VarHandle vh;
     protected int[] intArray;
-
-    protected class Seat {
-        protected final int seatIdx;
-
-        protected int route;
-        protected int coach;
-        protected int seat;
-
-        Seat(int seatIdx) {
-            this.seatIdx = seatIdx;
-        }
-
-        Seat(int route, int coach, int seat) {
-            this.route = route;
-            this.coach = coach;
-            this.seat = seat;
-            this.seatIdx = (param.COACH_NUM * param.SEAT_NUM * (route - 1)) + (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
-        }
-
-        public int getRoute() {
-            if (this.route == 0) {
-                this.route = (getSeatIdx() / (param.COACH_NUM * param.SEAT_NUM)) + 1;
-            }
-            return this.route;
-        }
-
-        public int getCoach() {
-            if (this.coach == 0) {
-                this.coach = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (getRoute() - 1))) / param.SEAT_NUM + 1;
-            }
-            return this.coach;
-        }
-
-        public int getSeat() {
-            if (this.seat == 0) {
-                this.seat = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (route - 1)) - (param.SEAT_NUM * (coach - 1))) + 1;
-            }
-            return this.seat;
-        }
-
-        public int getSeatIdx() {
-            return this.seatIdx;
-        }
-    }
 
     public ImplUsingOneArray(TicketingDS.TicketingDSParam param) {
         super(param);
@@ -151,6 +108,10 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
         }
         // 保证内存可见性
         readStatus(route);
+        return doInquiry(route, departure, arrival);
+    }
+
+    private int doInquiry(int route, int departure, int arrival) {
         int res = 0;
         for (int i = (route - 1) * param.COACH_NUM * param.SEAT_NUM; i < route * param.COACH_NUM * param.SEAT_NUM; i++) {
             // 保证可见性后使用plain的方式读取即可
@@ -167,15 +128,46 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
     @Override
     public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
         Ticket t = doBuyTicket(passenger, route, departure, arrival);
-        if (t == null) {
-            readStatus(route);
-            t = doBuyTicket(passenger, route, departure, arrival);
-        }
         if (t != null) {
-            writeStatus(route);
+            return t;
         }
-        return t;
+        int[] status = null;
+        while (true) {
+            if (status == null) {
+                status = readStatus(route);
+            }
+            if (doInquiry(route, departure, arrival) == 0) {
+                int[] newStatus = readStatus(route);
+                if (0 == Arrays.compare(status, newStatus)) {
+                    return null;
+                }
+            }
+            t = doBuyTicket(passenger, route, departure, arrival);
+            if (t != null) {
+                writeStatus(route);
+                return t;
+            } else {
+                int[] newStatus = readStatus(route);
+                if (0 == Arrays.compare(status, newStatus)) {
+                    return null;
+                }
+                status = newStatus;
+            }
+        }
     }
+
+//    @Override
+//    public Ticket buyTicket(String passenger, int route, int departure, int arrival) {
+//        Ticket t = doBuyTicket(passenger, route, departure, arrival);
+//        if (t == null) {
+//            readStatus(route);
+//            t = doBuyTicket(passenger, route, departure, arrival);
+//        }
+//        if (t != null) {
+//            writeStatus(route);
+//        }
+//        return t;
+//    }
 
     protected boolean doRefundTicket(Ticket ticket) {
         if (isParamsInvalid(ticket.route, ticket.departure, ticket.arrival)) {
@@ -192,5 +184,49 @@ public abstract class ImplUsingOneArray extends ImplWithOneIntStationMasks {
             writeStatus(ticket.route);
         }
         return res;
+    }
+
+    protected class Seat {
+        protected final int seatIdx;
+
+        protected int route;
+        protected int coach;
+        protected int seat;
+
+        Seat(int seatIdx) {
+            this.seatIdx = seatIdx;
+        }
+
+        Seat(int route, int coach, int seat) {
+            this.route = route;
+            this.coach = coach;
+            this.seat = seat;
+            this.seatIdx = (param.COACH_NUM * param.SEAT_NUM * (route - 1)) + (param.SEAT_NUM * (coach - 1)) + getSeat() - 1;
+        }
+
+        public int getRoute() {
+            if (this.route == 0) {
+                this.route = (getSeatIdx() / (param.COACH_NUM * param.SEAT_NUM)) + 1;
+            }
+            return this.route;
+        }
+
+        public int getCoach() {
+            if (this.coach == 0) {
+                this.coach = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (getRoute() - 1))) / param.SEAT_NUM + 1;
+            }
+            return this.coach;
+        }
+
+        public int getSeat() {
+            if (this.seat == 0) {
+                this.seat = (getSeatIdx() - (param.COACH_NUM * param.SEAT_NUM * (route - 1)) - (param.SEAT_NUM * (coach - 1))) + 1;
+            }
+            return this.seat;
+        }
+
+        public int getSeatIdx() {
+            return this.seatIdx;
+        }
     }
 }

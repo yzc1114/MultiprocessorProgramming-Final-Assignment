@@ -30,15 +30,29 @@ class myInt {
 }
 
 public class GenerateHistory {
+    /****************Manually Set Testing Information **************/
+
+    final static int routenum = 3; // route is designed from 1 to 3
+    final static int coachnum = 3; // coach is arranged from 1 to 5
+    final static int seatnum = 3; // seat is allocated from 1 to 20
+    final static int stationnum = 3; // station is designed from 1 to 5
+    final static List<String> methodList = new ArrayList<String>();
+    final static List<Integer> freqList = new ArrayList<Integer>();
+    final static List<Ticket> currentTicket = new ArrayList<Ticket>();
+    final static List<String> currentRes = new ArrayList<String>();
+    final static ArrayList<List<Ticket>> soldTicket = new ArrayList<List<Ticket>>();
+    //	final static AtomicInteger tidGen = new AtomicInteger(0);
+    final static Random rand = new Random();
     static int threadnum;//input
     static int testnum;//input
     static boolean isSequential;//input
     static int msec = 0;
     static int nsec = 0;
     static int totalPc;
-
     static AtomicInteger sLock = new AtomicInteger(0); //Synchronization Lock
     static boolean[] fin;
+    static TicketingDS tds;
+    volatile static boolean initLock = false;
 
     protected static boolean exOthNotFin(int tNum, int tid) {
         boolean flag = false;
@@ -61,24 +75,6 @@ public class GenerateHistory {
     static boolean SLOCK_TRY() {
         return (sLock.get() == 0);
     }
-
-    /****************Manually Set Testing Information **************/
-
-    final static int routenum = 3; // route is designed from 1 to 3
-    final static int coachnum = 3; // coach is arranged from 1 to 5
-    final static int seatnum = 3; // seat is allocated from 1 to 20
-    final static int stationnum = 3; // station is designed from 1 to 5
-
-
-    static TicketingDS tds;
-    final static List<String> methodList = new ArrayList<String>();
-    final static List<Integer> freqList = new ArrayList<Integer>();
-    final static List<Ticket> currentTicket = new ArrayList<Ticket>();
-    final static List<String> currentRes = new ArrayList<String>();
-    final static ArrayList<List<Ticket>> soldTicket = new ArrayList<List<Ticket>>();
-    volatile static boolean initLock = false;
-    //	final static AtomicInteger tidGen = new AtomicInteger(0);
-    final static Random rand = new Random();
 
     public static void initialization() {
         tds = new TicketingDS(routenum, coachnum, seatnum, stationnum, threadnum);
